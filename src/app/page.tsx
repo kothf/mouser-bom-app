@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { ApiKeyBanner } from '@/components/ApiKeyBanner';
@@ -28,7 +30,7 @@ import { useSettingsStore } from '@/store/settings-store';
 import { ParsedRawFile } from '@/lib/mouser/types';
 
 export default function Home() {
-  const { items, setIsManualSearchOpen } = useBomStore();
+  const { items, setIsManualSearchOpen, clearBom, loadSavedBom, isLoaded } = useBomStore();
   const { loadFromStorage } = useSettingsStore();
 
   const [parsedFileForMapping, setParsedFileForMapping] = useState<ParsedRawFile | null>(null);
@@ -36,7 +38,8 @@ export default function Home() {
 
   useEffect(() => {
     loadFromStorage();
-  }, [loadFromStorage]);
+    loadSavedBom();
+  }, [loadFromStorage, loadSavedBom]);
 
   const handleParsedFile = (parsed: ParsedRawFile) => {
     setParsedFileForMapping(parsed);
@@ -60,7 +63,7 @@ export default function Home() {
 
             {/* Ingestion & Tools Accordion Bar */}
             <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-3 px-4 shadow-sm">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setShowUploadAccordion(!showUploadAccordion)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
@@ -76,6 +79,19 @@ export default function Home() {
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Add Line Item</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to clear all BOM items? This will reset your current working list.')) {
+                      clearBom();
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold transition"
+                  title="Clear all line items from the list"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Clear List</span>
                 </button>
               </div>
 

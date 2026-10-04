@@ -538,17 +538,18 @@ export function BomGrid() {
             <span>Export to Mouser Cart</span>
           </button>
 
-          {/* Clear BOM */}
+          {/* Clear BOM Button */}
           <button
             onClick={() => {
-              if (confirm('Are you sure you want to clear all BOM items?')) {
+              if (window.confirm('Are you sure you want to clear all BOM items? This will reset your current working list.')) {
                 clearBom();
               }
             }}
-            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
-            title="Clear all line items"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold shadow-sm transition"
+            title="Clear all line items from the list"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Clear List</span>
           </button>
         </div>
       </div>

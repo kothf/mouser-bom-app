@@ -11,6 +11,7 @@ export interface ResolveProgress {
 export interface BomState {
   items: BOMItem[];
   isResolving: boolean;
+  isLoaded: boolean;
   resolveProgress: ResolveProgress | null;
   activeCart: MouserCartResponse | null;
   selectedItemForReplace: BOMItem | null;
@@ -30,13 +31,49 @@ export interface BomState {
   setIsReplaceModalOpen: (open: boolean) => void;
   setActiveCart: (cart: MouserCartResponse | null) => void;
 
+  loadSavedBom: () => Promise<void>;
   resolveAllItems: (searchApiKey?: string, useDemoMode?: boolean) => Promise<void>;
   getSummary: () => BOMSummary;
+}
+
+const STORAGE_KEY_ITEMS = 'mouser_bom_items_v1';
+const STORAGE_KEY_CART = 'mouser_bom_cart_v1';
+
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | null) {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items));
+      if (activeCart) {
+        localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(activeCart));
+      } else {
+        localStorage.removeItem(STORAGE_KEY_CART);
+      }
+    } catch (err) {
+      console.warn('Failed to save BOM to browser localStorage:', err);
+    }
+  }
+
+  // Sync to local server file storage in background
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+  syncDebounceTimer = setTimeout(() => {
+    fetch('/api/mouser/bom/storage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, activeCart }),
+    }).catch((err) => {
+      console.warn('Failed to persist BOM to server storage:', err);
+    });
+  }, 350);
 }
 
 export const useBomStore = create<BomState>((set, get) => ({
   items: [],
   isResolving: false,
+  isLoaded: false,
   resolveProgress: null,
   activeCart: null,
   selectedItemForReplace: null,
@@ -44,7 +81,10 @@ export const useBomStore = create<BomState>((set, get) => ({
   isManualSearchOpen: false,
   isReplaceModalOpen: false,
 
-  setItems: (items: BOMItem[]) => set({ items }),
+  setItems: (items: BOMItem[]) => {
+    set({ items });
+    persistToStorage(items, get().activeCart);
+  },
 
   addItem: (partialItem: Partial<BOMItem>) => {
     const current = get().items;
@@ -100,103 +140,128 @@ export const useBomStore = create<BomState>((set, get) => ({
       isCustomPart: Boolean(partialItem.isCustomPart),
     };
 
-    set({ items: [...current, newItem] });
+    const updated = [...current, newItem];
+    set({ items: updated });
+    persistToStorage(updated, get().activeCart);
   },
 
   updateItemQty: (id: string, newQty: number) => {
     const safeQty = Math.max(1, Math.floor(newQty) || 1);
-    set((state) => ({
-      items: state.items.map((item) => {
-        if (item.id !== id) return item;
+    const current = get().items;
+    const updated = current.map((item) => {
+      if (item.id !== id) return item;
 
-        let unitPrice = item.unitPrice;
-        let currency = item.currency;
+      let unitPrice = item.unitPrice;
+      let currency = item.currency;
 
-        if (item.matchedPart) {
-          const tier = calculateTierPrice(item.matchedPart.PriceBreaks, safeQty);
-          unitPrice = tier.unitPrice;
-          currency = tier.currency;
-        }
+      if (item.matchedPart) {
+        const tier = calculateTierPrice(item.matchedPart.PriceBreaks, safeQty);
+        unitPrice = tier.unitPrice;
+        currency = tier.currency;
+      }
 
-        const meetsMoq = safeQty >= item.moq;
-        const meetsMultiple = safeQty % item.orderMultiple === 0;
+      const meetsMoq = safeQty >= item.moq;
+      const meetsMultiple = safeQty % item.orderMultiple === 0;
 
-        let status = item.status;
-        if (item.matchedPart) {
-          if (item.availableStock < safeQty) {
-            status = 'low_stock';
-          } else if (!meetsMoq || !meetsMultiple) {
-            status = 'moq_warning';
-          } else {
-            status = 'matched';
-          }
-        }
-
-        return {
-          ...item,
-          requestedQty: safeQty,
-          unitPrice,
-          extendedPrice: unitPrice * safeQty,
-          currency,
-          meetsMoq,
-          meetsMultiple,
-          status,
-        };
-      }),
-    }));
-  },
-
-  deleteItem: (id: string) => {
-    set((state) => ({
-      items: state.items
-        .filter((i) => i.id !== id)
-        .map((item, idx) => ({ ...item, lineNumber: idx + 1 })),
-    }));
-  },
-
-  clearBom: () => set({ items: [], activeCart: null }),
-
-  replaceItemPart: (id: string, newPart: MouserPart) => {
-    set((state) => ({
-      items: state.items.map((item) => {
-        if (item.id !== id) return item;
-
-        const qty = item.requestedQty;
-        const tier = calculateTierPrice(newPart.PriceBreaks, qty);
-        const stock = parseStockQuantity(newPart.Availability);
-        const moq = parseInt(newPart.Min || '1', 10) || 1;
-        const mult = parseInt(newPart.Mult || '1', 10) || 1;
-
-        const meetsMoq = qty >= moq;
-        const meetsMultiple = qty % mult === 0;
-
-        let status: BOMItem['status'] = 'matched';
-        if (stock < qty) {
+      let status = item.status;
+      if (item.matchedPart) {
+        if (item.availableStock < safeQty) {
           status = 'low_stock';
         } else if (!meetsMoq || !meetsMultiple) {
           status = 'moq_warning';
+        } else {
+          status = 'matched';
         }
+      }
 
-        return {
-          ...item,
-          matchedPart: newPart,
-          rawPartNumber: newPart.ManufacturerPartNumber,
-          notes: newPart.Description,
-          unitPrice: tier.unitPrice,
-          extendedPrice: tier.unitPrice * qty,
-          currency: tier.currency,
-          availableStock: stock,
-          moq,
-          orderMultiple: mult,
-          meetsMoq,
-          meetsMultiple,
-          status,
-          errorMessage: undefined,
-        };
-      }),
+      return {
+        ...item,
+        requestedQty: safeQty,
+        unitPrice,
+        extendedPrice: unitPrice * safeQty,
+        currency,
+        meetsMoq,
+        meetsMultiple,
+        status,
+      };
+    });
+
+    set({ items: updated });
+    persistToStorage(updated, get().activeCart);
+  },
+
+  deleteItem: (id: string) => {
+    const current = get().items;
+    const updated = current
+      .filter((i) => i.id !== id)
+      .map((item, idx) => ({ ...item, lineNumber: idx + 1 }));
+
+    set({ items: updated });
+    persistToStorage(updated, get().activeCart);
+  },
+
+  clearBom: () => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_KEY_ITEMS);
+        localStorage.removeItem(STORAGE_KEY_CART);
+      } catch {}
+    }
+
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = null;
+    }
+
+    fetch('/api/mouser/bom/storage', { method: 'DELETE' }).catch(() => {});
+    set({ items: [], activeCart: null, selectedItemForReplace: null, resolveProgress: null });
+  },
+
+  replaceItemPart: (id: string, newPart: MouserPart) => {
+    const current = get().items;
+    const updated = current.map((item) => {
+      if (item.id !== id) return item;
+
+      const qty = item.requestedQty;
+      const tier = calculateTierPrice(newPart.PriceBreaks, qty);
+      const stock = parseStockQuantity(newPart.Availability);
+      const moq = parseInt(newPart.Min || '1', 10) || 1;
+      const mult = parseInt(newPart.Mult || '1', 10) || 1;
+
+      const meetsMoq = qty >= moq;
+      const meetsMultiple = qty % mult === 0;
+
+      let status: BOMItem['status'] = 'matched';
+      if (stock < qty) {
+        status = 'low_stock';
+      } else if (!meetsMoq || !meetsMultiple) {
+        status = 'moq_warning';
+      }
+
+      return {
+        ...item,
+        matchedPart: newPart,
+        rawPartNumber: newPart.ManufacturerPartNumber,
+        notes: newPart.Description,
+        unitPrice: tier.unitPrice,
+        extendedPrice: tier.unitPrice * qty,
+        currency: tier.currency,
+        availableStock: stock,
+        moq,
+        orderMultiple: mult,
+        meetsMoq,
+        meetsMultiple,
+        status,
+        errorMessage: undefined,
+      };
+    });
+
+    set({
+      items: updated,
       isReplaceModalOpen: false,
       selectedItemForReplace: null,
-    }));
+    });
+    persistToStorage(updated, get().activeCart);
   },
 
   setSelectedForReplace: (item: BOMItem | null) => {
@@ -206,15 +271,79 @@ export const useBomStore = create<BomState>((set, get) => ({
   setIsCartModalOpen: (open: boolean) => set({ isCartModalOpen: open }),
   setIsManualSearchOpen: (open: boolean) => set({ isManualSearchOpen: open }),
   setIsReplaceModalOpen: (open: boolean) => set({ isReplaceModalOpen: open }),
-  setActiveCart: (cart: MouserCartResponse | null) => set({ activeCart: cart }),
+  setActiveCart: (cart: MouserCartResponse | null) => {
+    set({ activeCart: cart });
+    persistToStorage(get().items, cart);
+  },
+
+  loadSavedBom: async () => {
+    let loadedItems: BOMItem[] | null = null;
+    let loadedCart: MouserCartResponse | null = null;
+
+    // 1. Try browser localStorage first
+    if (typeof window !== 'undefined') {
+      try {
+        const localRaw = localStorage.getItem(STORAGE_KEY_ITEMS);
+        if (localRaw) {
+          const parsed = JSON.parse(localRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loadedItems = parsed;
+          }
+        }
+        const cartRaw = localStorage.getItem(STORAGE_KEY_CART);
+        if (cartRaw) {
+          loadedCart = JSON.parse(cartRaw);
+        }
+      } catch (err) {
+        console.warn('Could not read BOM from localStorage:', err);
+      }
+    }
+
+    if (loadedItems && loadedItems.length > 0) {
+      set({ items: loadedItems, activeCart: loadedCart, isLoaded: true });
+      return;
+    }
+
+    // 2. Fallback to server local storage file
+    try {
+      const res = await fetch('/api/mouser/bom/storage');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          set({
+            items: data.items,
+            activeCart: data.activeCart || null,
+            isLoaded: true,
+          });
+
+          // Sync back to localStorage
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(data.items));
+              if (data.activeCart) {
+                localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.activeCart));
+              }
+            } catch {}
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not read BOM from server storage:', err);
+    }
+
+    set({ isLoaded: true });
+  },
 
   resolveAllItems: async (searchApiKey?: string, useDemoMode: boolean = false) => {
     const { items } = get();
     if (items.length === 0) return;
 
-    set({ isResolving: true, resolveProgress: { current: 0, total: items.length, currentPart: 'Starting...' } });
+    set({
+      isResolving: true,
+      resolveProgress: { current: 0, total: items.length, currentPart: 'Starting...' },
+    });
 
-    // Copy array for immutability
     const updatedItems = [...items];
 
     for (let i = 0; i < updatedItems.length; i++) {
@@ -302,6 +431,7 @@ export const useBomStore = create<BomState>((set, get) => ({
     }
 
     set({ isResolving: false, resolveProgress: null });
+    persistToStorage(updatedItems, get().activeCart);
   },
 
   getSummary: (): BOMSummary => {
