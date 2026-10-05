@@ -7,8 +7,21 @@ import { useSettingsStore } from '@/store/settings-store';
 export function ApiKeyBanner() {
   const { searchApiKey, setIsSettingsOpen } = useSettingsStore();
 
+  const [hasKey, setHasKey] = React.useState(true);
+
+  React.useEffect(() => {
+    let key = searchApiKey?.trim();
+    if (!key && typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+        key = stored.searchApiKey?.trim();
+      } catch {}
+    }
+    setHasKey(Boolean(key));
+  }, [searchApiKey]);
+
   // If user has set an API key, no banner is needed
-  if (searchApiKey) {
+  if (hasKey) {
     return null;
   }
 

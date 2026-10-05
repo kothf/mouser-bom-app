@@ -37,8 +37,15 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
     setItems(items);
     onClose();
 
-    // Trigger automatic resolution through Mouser API
-    resolveAllItems(searchApiKey);
+    // Trigger automatic resolution through Mouser API with fallback
+    let effectiveKey = searchApiKey?.trim();
+    if (!effectiveKey && typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+        effectiveKey = stored.searchApiKey?.trim();
+      } catch {}
+    }
+    resolveAllItems(effectiveKey);
   };
 
   const previewRows = parsedFile.rows.slice(0, 5);

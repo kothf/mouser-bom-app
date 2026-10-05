@@ -24,7 +24,7 @@ export function ReplacePartModal() {
     selectedItemForReplace,
     replaceItemPart,
   } = useBomStore();
-  const { searchApiKey } = useSettingsStore();
+  const { searchApiKey, setIsSettingsOpen } = useSettingsStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,14 +45,27 @@ export function ReplacePartModal() {
     const q = (queryText !== undefined ? queryText : searchQuery).trim();
     if (!q) return;
 
+    let effectiveKey = searchApiKey?.trim();
+    if (!effectiveKey && typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+        effectiveKey = stored.searchApiKey?.trim();
+      } catch {}
+    }
+
+    if (!effectiveKey) {
+      setErrorMsg('Mouser Search API Key is not configured. Please open Settings to enter your key.');
+      return;
+    }
+
     setLoading(true);
     setErrorMsg(null);
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (searchApiKey) {
-        headers['x-mouser-search-key'] = searchApiKey;
-      }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-mouser-search-key': effectiveKey,
+      };
 
       const res = await fetch(apiPath('/api/mouser/search/keyword'), {
         method: 'POST',
@@ -144,9 +157,20 @@ export function ReplacePartModal() {
         {/* Results List */}
         <div className="p-6 overflow-y-auto space-y-3 flex-1">
           {errorMsg && (
-            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{errorMsg}</span>
+              </div>
+              {/key|setting/i.test(errorMsg) && (
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shrink-0 shadow-sm transition"
+                >
+                  Open Settings
+                </button>
+              )}
             </div>
           )}
 

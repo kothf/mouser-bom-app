@@ -35,6 +35,7 @@ export interface BomState {
 
   loadSavedBom: () => Promise<void>;
   resolveAllItems: (searchApiKey?: string) => Promise<void>;
+  resolveSingleItem: (id: string, searchApiKey?: string) => Promise<void>;
   getSummary: () => BOMSummary;
 }
 
@@ -70,6 +71,109 @@ function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | nul
       console.warn('Failed to persist BOM to server storage:', err);
     });
   }, 350);
+}
+
+function getEffectiveSearchKey(explicitKey?: string): string {
+  let effectiveKey = explicitKey?.trim();
+  if (!effectiveKey) {
+    try {
+      effectiveKey = useSettingsStore.getState().searchApiKey?.trim();
+    } catch {}
+  }
+  if (!effectiveKey && typeof window !== 'undefined') {
+    try {
+      const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+      effectiveKey = stored.searchApiKey?.trim();
+    } catch {}
+  }
+  return effectiveKey || '';
+}
+
+async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Promise<BOMItem> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-mouser-search-key': effectiveKey,
+    };
+
+    const res = await fetch(apiPath('/api/mouser/search/partnumber'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        partNumber: item.rawPartNumber,
+        description: item.notes,
+        designator: item.designator,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const parts: MouserPart[] = data.parts || [];
+
+    if (parts.length > 0 && !data.error) {
+      const matchedPart = pickBestMatchedPart(parts, item.rawPartNumber) || parts[0];
+      const stock = parseStockQuantity(
+        matchedPart.Availability,
+        matchedPart.AvailabilityInStock,
+        matchedPart.FactoryStock
+      );
+      const tier = calculateTierPrice(matchedPart.PriceBreaks, item.requestedQty);
+      const moq = parseInt(matchedPart.Min || '1', 10) || 1;
+      const mult = parseInt(matchedPart.Mult || '1', 10) || 1;
+      const meetsMoq = item.requestedQty >= moq;
+      const meetsMultiple = item.requestedQty % mult === 0;
+
+      let status: BOMItem['status'] = 'matched';
+      if (stock < item.requestedQty) {
+        status = 'low_stock';
+      } else if (!meetsMoq || !meetsMultiple) {
+        status = 'moq_warning';
+      }
+
+      return {
+        ...item,
+        matchedPart,
+        availableStock: stock,
+        unitPrice: tier.unitPrice,
+        extendedPrice: tier.unitPrice * item.requestedQty,
+        currency: tier.currency,
+        moq,
+        orderMultiple: mult,
+        meetsMoq,
+        meetsMultiple,
+        status,
+        errorMessage: undefined,
+      };
+    } else {
+      const errMsg = data.error || `Part "${item.rawPartNumber}" not found in Mouser catalog`;
+      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit/i.test(errMsg);
+
+      return {
+        ...item,
+        matchedPart: undefined,
+        availableStock: 0,
+        unitPrice: 0,
+        extendedPrice: 0,
+        status: isAuthOrNetworkError ? 'error' : 'unresolved',
+        errorMessage: errMsg,
+      };
+    }
+  } catch (err: unknown) {
+    console.error(`Failed to resolve ${item.rawPartNumber}:`, err);
+    const errMsg = (err as Error).message || 'Connection error';
+    return {
+      ...item,
+      matchedPart: undefined,
+      availableStock: 0,
+      unitPrice: 0,
+      extendedPrice: 0,
+      status: 'error',
+      errorMessage: errMsg,
+    };
+  }
 }
 
 export const useBomStore = create<BomState>((set, get) => ({
@@ -349,19 +453,7 @@ export const useBomStore = create<BomState>((set, get) => ({
     const { items } = get();
     if (items.length === 0) return;
 
-    // Resolve key from argument, Zustand store, or localStorage
-    let effectiveKey = explicitKey?.trim();
-    if (!effectiveKey) {
-      try {
-        effectiveKey = useSettingsStore.getState().searchApiKey?.trim();
-      } catch {}
-    }
-    if (!effectiveKey && typeof window !== 'undefined') {
-      try {
-        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
-        effectiveKey = stored.searchApiKey?.trim();
-      } catch {}
-    }
+    const effectiveKey = getEffectiveSearchKey(explicitKey);
 
     if (!effectiveKey) {
       useSettingsStore.getState().setIsSettingsOpen(true);
@@ -386,97 +478,32 @@ export const useBomStore = create<BomState>((set, get) => ({
         },
       });
 
-      try {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'x-mouser-search-key': effectiveKey,
-        };
-
-        const res = await fetch(apiPath('/api/mouser/search/partnumber'), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            partNumber: item.rawPartNumber,
-            description: item.notes,
-            designator: item.designator,
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        const parts: MouserPart[] = data.parts || [];
-
-        if (parts.length > 0 && !data.error) {
-          const matchedPart = pickBestMatchedPart(parts, item.rawPartNumber) || parts[0];
-          const stock = parseStockQuantity(
-            matchedPart.Availability,
-            matchedPart.AvailabilityInStock,
-            matchedPart.FactoryStock
-          );
-          const tier = calculateTierPrice(matchedPart.PriceBreaks, item.requestedQty);
-          const moq = parseInt(matchedPart.Min || '1', 10) || 1;
-          const mult = parseInt(matchedPart.Mult || '1', 10) || 1;
-          const meetsMoq = item.requestedQty >= moq;
-          const meetsMultiple = item.requestedQty % mult === 0;
-
-          let status: BOMItem['status'] = 'matched';
-          if (stock < item.requestedQty) {
-            status = 'low_stock';
-          } else if (!meetsMoq || !meetsMultiple) {
-            status = 'moq_warning';
-          }
-
-          updatedItems[i] = {
-            ...item,
-            matchedPart,
-            availableStock: stock,
-            unitPrice: tier.unitPrice,
-            extendedPrice: tier.unitPrice * item.requestedQty,
-            currency: tier.currency,
-            moq,
-            orderMultiple: mult,
-            meetsMoq,
-            meetsMultiple,
-            status,
-            errorMessage: undefined,
-          };
-        } else {
-          // Part was not found on Mouser or an API error occurred
-          const errMsg = data.error || `Part "${item.rawPartNumber}" not found in Mouser catalog`;
-          const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit/i.test(errMsg);
-
-          updatedItems[i] = {
-            ...item,
-            matchedPart: undefined,
-            availableStock: 0,
-            unitPrice: 0,
-            extendedPrice: 0,
-            status: isAuthOrNetworkError ? 'error' : 'unresolved',
-            errorMessage: errMsg,
-          };
-        }
-      } catch (err: unknown) {
-        console.error(`Failed to resolve ${item.rawPartNumber}:`, err);
-        const errMsg = (err as Error).message || 'Connection error';
-        updatedItems[i] = {
-          ...item,
-          matchedPart: undefined,
-          availableStock: 0,
-          unitPrice: 0,
-          extendedPrice: 0,
-          status: 'error',
-          errorMessage: errMsg,
-        };
-      }
+      updatedItems[i] = await queryAndMatchSingleItem(item, effectiveKey);
 
       // Update state incrementally so user sees live row-by-row updates
       set({ items: [...updatedItems] });
     }
 
     set({ isResolving: false, resolveProgress: null });
+    persistToStorage(updatedItems, get().activeCart);
+  },
+
+  resolveSingleItem: async (id: string, explicitKey?: string) => {
+    const { items } = get();
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+
+    const effectiveKey = getEffectiveSearchKey(explicitKey);
+
+    if (!effectiveKey) {
+      useSettingsStore.getState().setIsSettingsOpen(true);
+      alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
+      return;
+    }
+
+    const updatedItem = await queryAndMatchSingleItem(item, effectiveKey);
+    const updatedItems = get().items.map((i) => (i.id === id ? updatedItem : i));
+    set({ items: updatedItems });
     persistToStorage(updatedItems, get().activeCart);
   },
 

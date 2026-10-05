@@ -14,6 +14,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settings-store';
+import { useBomStore } from '@/store/bom-store';
 import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
 
@@ -27,6 +28,8 @@ export function SettingsModal() {
     saveSettings,
     setIsSettingsOpen,
   } = useSettingsStore();
+
+  const { items, resolveAllItems } = useBomStore();
 
   const [localSearchKey, setLocalSearchKey] = useState(searchApiKey);
   const [localCartKey, setLocalCartKey] = useState(cartApiKey);
@@ -71,7 +74,24 @@ export function SettingsModal() {
         body: JSON.stringify({ apiKey: cleanKey }),
       });
       const data = await res.json();
-      setTestResult({ valid: data.valid, message: data.message });
+      if (data.valid) {
+        setTestResult({ valid: true, message: '✓ Valid Search API Key — Saved automatically!' });
+        // Auto-save verified key to store & localStorage immediately
+        await saveSettings({
+          searchApiKey: cleanKey,
+          cartApiKey: sanitizeApiKey(localCartKey),
+          rateLimitDelayMs: localDelay,
+          maxConcurrency: localConcurrency,
+        });
+        setSavedSuccess(true);
+
+        // If BOM has items waiting, auto-resolve with the verified key!
+        if (items.length > 0) {
+          resolveAllItems(cleanKey);
+        }
+      } else {
+        setTestResult({ valid: false, message: data.message || 'Key rejected by Mouser API' });
+      }
     } catch (err: unknown) {
       setTestResult({ valid: false, message: (err as Error).message || 'Verification request failed' });
     } finally {
@@ -93,9 +113,32 @@ export function SettingsModal() {
     });
     setIsSaving(false);
     setSavedSuccess(true);
+
+    // If BOM has items, automatically resolve them with the newly saved key!
+    if (items.length > 0 && cleanSearch) {
+      resolveAllItems(cleanSearch);
+    }
+
     setTimeout(() => {
       setIsSettingsOpen(false);
     }, 600);
+  };
+
+  const handleClose = () => {
+    // If the user modified the key and it looks valid, persist it silently
+    const cleanSearch = sanitizeApiKey(localSearchKey);
+    if (cleanSearch && cleanSearch !== searchApiKey) {
+      saveSettings({
+        searchApiKey: cleanSearch,
+        cartApiKey: sanitizeApiKey(localCartKey),
+        rateLimitDelayMs: localDelay,
+        maxConcurrency: localConcurrency,
+      });
+      if (items.length > 0) {
+        resolveAllItems(cleanSearch);
+      }
+    }
+    setIsSettingsOpen(false);
   };
 
   return (
@@ -113,7 +156,7 @@ export function SettingsModal() {
             </div>
           </div>
           <button
-            onClick={() => setIsSettingsOpen(false)}
+            onClick={handleClose}
             className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
           >
             <X className="w-5 h-5" />
@@ -264,7 +307,7 @@ export function SettingsModal() {
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-end gap-3">
           <button
-            onClick={() => setIsSettingsOpen(false)}
+            onClick={handleClose}
             className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white transition"
           >
             Cancel

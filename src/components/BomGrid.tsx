@@ -26,6 +26,7 @@ import {
   Layers,
   ArrowUpDown,
   Sparkles,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { BOMItem } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
@@ -46,6 +47,7 @@ export function BomGrid() {
     deleteItem,
     clearBom,
     resolveAllItems,
+    resolveSingleItem,
     setSelectedForReplace,
     setActiveCart,
     setIsCartModalOpen,
@@ -58,6 +60,26 @@ export function BomGrid() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isPushingCart, setIsPushingCart] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
+  const [resolvingItemId, setResolvingItemId] = useState<string | null>(null);
+
+  // Compute robust effective search key with localStorage fallback
+  const effectiveSearchKey = useMemo(() => {
+    if (searchApiKey?.trim()) return searchApiKey.trim();
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+        if (stored.searchApiKey?.trim()) return stored.searchApiKey.trim();
+      } catch {}
+    }
+    return '';
+  }, [searchApiKey]);
+
+  // Check if any items have not been queried or need resolution
+  const hasUnresolved = useMemo(() => {
+    return items.some(
+      (i) => !i.matchedPart || i.status === 'unresolved' || i.status === 'pending' || i.status === 'error'
+    );
+  }, [items]);
 
   // Filter items by status if statusFilter is not 'all'
   const filteredData = useMemo(() => {
@@ -441,11 +463,30 @@ export function BomGrid() {
           return (
             <div className="flex items-center gap-1.5">
               <button
+                onClick={async () => {
+                  setResolvingItemId(item.id);
+                  try {
+                    await resolveSingleItem(item.id, effectiveSearchKey);
+                  } finally {
+                    setResolvingItemId(null);
+                  }
+                }}
+                disabled={isResolving || resolvingItemId === item.id}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-50 transition"
+                title="Query live Mouser stock for this part"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    resolvingItemId === item.id ? 'animate-spin text-cyan-400' : ''
+                  }`}
+                />
+              </button>
+              <button
                 onClick={() => setSelectedForReplace(item)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition"
                 title="Search alternate / replacement part"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <ArrowLeftRight className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => deleteItem(item.id)}
@@ -459,7 +500,7 @@ export function BomGrid() {
         },
       }),
     ],
-    [updateItemQty, deleteItem, setSelectedForReplace]
+    [updateItemQty, deleteItem, setSelectedForReplace, resolveSingleItem, effectiveSearchKey, resolvingItemId, isResolving]
   );
 
   const table = useReactTable({
@@ -480,6 +521,32 @@ export function BomGrid() {
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden mb-12">
+      {/* Banner when parts need resolution */}
+      {hasUnresolved && !isResolving && (
+        <div className="bg-gradient-to-r from-blue-950/90 via-indigo-950/70 to-slate-900 border-b border-blue-500/30 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-lg bg-blue-500/20 text-cyan-400">
+              <Sparkles className="w-4 h-4 text-cyan-300" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-white">
+                BOM components waiting for live Mouser query
+              </p>
+              <p className="text-[11px] text-slate-300">
+                Live inventory, volume pricing, and lead times have not been fetched yet.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => resolveAllItems(effectiveSearchKey)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950 shrink-0 transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-white" />
+            <span>⚡ Resolve with Mouser API</span>
+          </button>
+        </div>
+      )}
+
       {/* Table Action Bar */}
       <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/60 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
         {/* Search & Filter */}
@@ -528,12 +595,26 @@ export function BomGrid() {
         <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center">
           {/* Refresh / Resolve Button */}
           <button
-            onClick={() => resolveAllItems(searchApiKey)}
+            onClick={() => resolveAllItems(effectiveSearchKey)}
             disabled={isResolving}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 text-xs font-semibold shadow-sm transition"
+            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition ${
+              hasUnresolved
+                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950 font-bold'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+            } disabled:opacity-50`}
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isResolving ? 'animate-spin' : ''}`} />
-            <span>{isResolving ? 'Resolving...' : 'Re-check Inventory'}</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isResolving ? 'animate-spin' : hasUnresolved ? 'text-white' : 'text-blue-400'
+              }`}
+            />
+            <span>
+              {isResolving
+                ? 'Resolving...'
+                : hasUnresolved
+                ? '⚡ Resolve Live Inventory'
+                : 'Re-check Inventory'}
+            </span>
           </button>
 
           {/* Enriched Export Dropdown */}
