@@ -162,9 +162,11 @@ export function BomGrid() {
               );
             case 'error':
               return (
-                <div className="flex items-center gap-1.5 text-rose-400">
-                  <XCircle className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Error</span>
+                <div className="flex items-center gap-1.5 text-rose-400" title={item.errorMessage || 'Error'}>
+                  <XCircle className="w-4 h-4 shrink-0" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">
+                    {/api key|unauthorized/i.test(item.errorMessage || '') ? 'No API Key' : 'Error'}
+                  </span>
                 </div>
               );
             default:
@@ -315,6 +317,19 @@ export function BomGrid() {
           const stock = info.getValue();
           const inStock = stock >= item.requestedQty;
 
+          if (!item.matchedPart) {
+            return (
+              <div className="space-y-0.5">
+                <span className="font-mono text-xs font-semibold text-slate-500">
+                  {item.status === 'error' ? 'Key Missing' : '—'}
+                </span>
+                <p className="text-[10px] text-slate-500 truncate max-w-[110px]" title={item.errorMessage || 'Part not resolved'}>
+                  {item.status === 'error' ? 'Check Settings' : 'Not matched'}
+                </p>
+              </div>
+            );
+          }
+
           return (
             <div className="space-y-0.5">
               <span
@@ -329,7 +344,7 @@ export function BomGrid() {
                 {formatNumber(stock)}
               </span>
               <p className="text-[10px] text-slate-500">
-                {stock === 0 ? 'Backorder' : inStock ? 'Immediate' : `Short by ${item.requestedQty - stock}`}
+                {stock === 0 ? 'Out of Stock' : inStock ? 'Immediate' : `Short by ${item.requestedQty - stock}`}
               </p>
             </div>
           );

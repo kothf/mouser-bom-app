@@ -10,6 +10,7 @@ export interface MouserPriceBreak {
 
 export interface MouserPart {
   Availability: string;
+  AvailabilityInStock?: string | number;
   DataSheetUrl?: string;
   Description: string;
   FactoryStock: string;

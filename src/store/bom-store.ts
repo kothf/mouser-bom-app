@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { BOMItem, BOMSummary, MouserPart, MouserCartResponse } from '@/lib/mouser/types';
-import { calculateTierPrice, parseStockQuantity } from '@/lib/mouser/client';
+import { calculateTierPrice, parseStockQuantity, pickBestMatchedPart } from '@/lib/mouser/client';
 import { apiPath } from '@/lib/api-path';
+import { useSettingsStore } from './settings-store';
 
 export interface ResolveProgress {
   current: number;
@@ -102,7 +103,11 @@ export const useBomStore = create<BomState>((set, get) => ({
       const tier = calculateTierPrice(matchedPart.PriceBreaks, requestedQty);
       unitPrice = tier.unitPrice;
       currency = tier.currency;
-      availableStock = parseStockQuantity(matchedPart.Availability);
+      availableStock = parseStockQuantity(
+        matchedPart.Availability,
+        matchedPart.AvailabilityInStock,
+        matchedPart.FactoryStock
+      );
       moq = parseInt(matchedPart.Min || '1', 10) || 1;
       mult = parseInt(matchedPart.Mult || '1', 10) || 1;
     }
@@ -225,7 +230,11 @@ export const useBomStore = create<BomState>((set, get) => ({
 
       const qty = item.requestedQty;
       const tier = calculateTierPrice(newPart.PriceBreaks, qty);
-      const stock = parseStockQuantity(newPart.Availability);
+      const stock = parseStockQuantity(
+        newPart.Availability,
+        newPart.AvailabilityInStock,
+        newPart.FactoryStock
+      );
       const moq = parseInt(newPart.Min || '1', 10) || 1;
       const mult = parseInt(newPart.Mult || '1', 10) || 1;
 
@@ -336,9 +345,29 @@ export const useBomStore = create<BomState>((set, get) => ({
     set({ isLoaded: true });
   },
 
-  resolveAllItems: async (searchApiKey?: string) => {
+  resolveAllItems: async (explicitKey?: string) => {
     const { items } = get();
     if (items.length === 0) return;
+
+    // Resolve key from argument, Zustand store, or localStorage
+    let effectiveKey = explicitKey?.trim();
+    if (!effectiveKey) {
+      try {
+        effectiveKey = useSettingsStore.getState().searchApiKey?.trim();
+      } catch {}
+    }
+    if (!effectiveKey && typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
+        effectiveKey = stored.searchApiKey?.trim();
+      } catch {}
+    }
+
+    if (!effectiveKey) {
+      useSettingsStore.getState().setIsSettingsOpen(true);
+      alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
+      return;
+    }
 
     set({
       isResolving: true,
@@ -358,10 +387,10 @@ export const useBomStore = create<BomState>((set, get) => ({
       });
 
       try {
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (searchApiKey) {
-          headers['x-mouser-search-key'] = searchApiKey;
-        }
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'x-mouser-search-key': effectiveKey,
+        };
 
         const res = await fetch(apiPath('/api/mouser/search/partnumber'), {
           method: 'POST',
@@ -381,8 +410,12 @@ export const useBomStore = create<BomState>((set, get) => ({
         const parts: MouserPart[] = data.parts || [];
 
         if (parts.length > 0 && !data.error) {
-          const matchedPart = parts[0];
-          const stock = parseStockQuantity(matchedPart.Availability);
+          const matchedPart = pickBestMatchedPart(parts, item.rawPartNumber) || parts[0];
+          const stock = parseStockQuantity(
+            matchedPart.Availability,
+            matchedPart.AvailabilityInStock,
+            matchedPart.FactoryStock
+          );
           const tier = calculateTierPrice(matchedPart.PriceBreaks, item.requestedQty);
           const moq = parseInt(matchedPart.Min || '1', 10) || 1;
           const mult = parseInt(matchedPart.Mult || '1', 10) || 1;

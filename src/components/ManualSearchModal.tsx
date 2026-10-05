@@ -194,7 +194,7 @@ export function ManualSearchModal() {
           )}
 
           {results.map((part) => {
-            const stockNum = parseStockQuantity(part.Availability);
+            const stockNum = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
             const inStock = stockNum > 0;
             const currentQty =
               quantities[part.MouserPartNumber] || parseInt(part.Min || '1', 10) || 1;

@@ -152,7 +152,7 @@ export function ReplacePartModal() {
           )}
 
           {results.map((part) => {
-            const stockNum = parseStockQuantity(part.Availability);
+            const stockNum = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
             const inStock = stockNum > 0;
             const isCurrent =
               part.ManufacturerPartNumber.toUpperCase() ===

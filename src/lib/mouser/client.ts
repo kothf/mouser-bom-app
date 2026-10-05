@@ -411,13 +411,97 @@ export function calculateTierPrice(
 }
 
 /**
- * Utility: Parse stock quantity string (e.g. "4,120 In Stock" -> 4120)
+ * Utility: Robustly parse stock quantity across all Mouser inventory fields:
+ * - Availability text (e.g. "4,120 In Stock", "Factory Stock: 500")
+ * - AvailabilityInStock numeric string (e.g. "4120")
+ * - FactoryStock numeric string (e.g. "500")
  */
-export function parseStockQuantity(stockStr: string | undefined): number {
-  if (!stockStr) return 0;
-  const match = stockStr.replace(/,/g, '').match(/\d+/);
-  return match ? parseInt(match[0], 10) : 0;
+export function parseStockQuantity(
+  availStr?: string | null,
+  availInStock?: string | number | null,
+  factoryStock?: string | number | null
+): number {
+  let warehouseStock = 0;
+
+  // 1. Direct AvailabilityInStock field (preferred)
+  if (availInStock !== undefined && availInStock !== null && availInStock !== '') {
+    const clean = String(availInStock).replace(/,/g, '').trim();
+    const num = parseInt(clean, 10);
+    if (!isNaN(num) && num > 0) {
+      warehouseStock = num;
+    }
+  }
+
+  // 2. Fallback to parsing text Availability (e.g. "4,120 In Stock")
+  if (warehouseStock === 0 && availStr) {
+    const clean = String(availStr).replace(/,/g, '').trim();
+    if (!/^none$|^0(\s+in\s+stock)?$/i.test(clean)) {
+      const match = clean.match(/\d+/);
+      if (match) {
+        warehouseStock = parseInt(match[0], 10);
+      }
+    }
+  }
+
+  // 3. Factory Stock
+  let factory = 0;
+  if (factoryStock !== undefined && factoryStock !== null && factoryStock !== '') {
+    const clean = String(factoryStock).replace(/,/g, '').trim();
+    const num = parseInt(clean, 10);
+    if (!isNaN(num) && num > 0) {
+      factory = num;
+    }
+  }
+
+  return warehouseStock + factory;
+}
+
+/**
+ * Utility: Intelligent selector to pick the best matching part from Mouser search results.
+ * Avoids picking placeholder / non-orderable rows (e.g. MouserPartNumber "N/A" or 0-stock parent items)
+ * when valid in-stock, orderable variants exist in the search results.
+ */
+export function pickBestMatchedPart(parts: MouserPart[], queryPartNumber?: string): MouserPart | null {
+  if (!parts || parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+
+  const target = (queryPartNumber || '').trim().toLowerCase();
+
+  const scorePart = (p: MouserPart): number => {
+    let score = 0;
+    const mpn = (p.ManufacturerPartNumber || '').trim().toLowerCase();
+    const mouserPn = (p.MouserPartNumber || '').trim().toLowerCase();
+    const isNA = mouserPn === 'n/a' || !mouserPn;
+
+    if (isNA) score -= 1000;
+
+    if (target && (mpn === target || mouserPn === target)) {
+      score += 500;
+    } else if (target && (mpn.startsWith(target) || target.startsWith(mpn))) {
+      score += 200;
+    }
+
+    const stock = parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
+    if (stock > 0) {
+      score += 300;
+      score += Math.min(stock, 1000) / 10;
+    }
+
+    if (p.PriceBreaks && p.PriceBreaks.length > 0) {
+      score += 100;
+    }
+
+    if (p.DataSheetUrl) {
+      score += 10;
+    }
+
+    return score;
+  };
+
+  const sorted = [...parts].sort((a, b) => scorePart(b) - scorePart(a));
+  return sorted[0] || parts[0];
 }
 
 // Global client singleton
 export const mouserClient = new MouserClient();
+
