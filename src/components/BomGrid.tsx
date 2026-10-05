@@ -32,6 +32,7 @@ import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { calculateTierPrice } from '@/lib/mouser/client';
+import { apiPath } from '@/lib/api-path';
 import { ExportDropdown } from './ExportDropdown';
 
 const columnHelper = createColumnHelper<BOMItem>();
@@ -96,7 +97,7 @@ export function BomGrid() {
         headers['x-mouser-cart-key'] = cartApiKey;
       }
 
-      const res = await fetch('/api/mouser/cart/create', {
+      const res = await fetch(apiPath('/api/mouser/cart/create'), {
         method: 'POST',
         headers,
         body: JSON.stringify({

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BOMItem, BOMSummary, MouserPart, MouserCartResponse } from '@/lib/mouser/types';
 import { calculateTierPrice, parseStockQuantity } from '@/lib/mouser/client';
+import { apiPath } from '@/lib/api-path';
 
 export interface ResolveProgress {
   current: number;
@@ -60,7 +61,7 @@ function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | nul
     clearTimeout(syncDebounceTimer);
   }
   syncDebounceTimer = setTimeout(() => {
-    fetch('/api/mouser/bom/storage', {
+    fetch(apiPath('/api/mouser/bom/storage'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items, activeCart }),
@@ -213,7 +214,7 @@ export const useBomStore = create<BomState>((set, get) => ({
       syncDebounceTimer = null;
     }
 
-    fetch('/api/mouser/bom/storage', { method: 'DELETE' }).catch(() => {});
+    fetch(apiPath('/api/mouser/bom/storage'), { method: 'DELETE' }).catch(() => {});
     set({ items: [], activeCart: null, selectedItemForReplace: null, resolveProgress: null });
   },
 
@@ -306,7 +307,7 @@ export const useBomStore = create<BomState>((set, get) => ({
 
     // 2. Fallback to server local storage file
     try {
-      const res = await fetch('/api/mouser/bom/storage');
+      const res = await fetch(apiPath('/api/mouser/bom/storage'));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.items) && data.items.length > 0) {
@@ -362,7 +363,7 @@ export const useBomStore = create<BomState>((set, get) => ({
           headers['x-mouser-search-key'] = searchApiKey;
         }
 
-        const res = await fetch('/api/mouser/search/partnumber', {
+        const res = await fetch(apiPath('/api/mouser/search/partnumber'), {
           method: 'POST',
           headers,
           body: JSON.stringify({

@@ -14,6 +14,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settings-store';
+import { apiPath } from '@/lib/api-path';
 
 export function SettingsModal() {
   const {
@@ -61,7 +62,7 @@ export function SettingsModal() {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/mouser/verify', {
+      const res = await fetch(apiPath('/api/mouser/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: localSearchKey.trim() }),

@@ -17,6 +17,7 @@ import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity, calculateTierPrice } from '@/lib/mouser/client';
 import { formatCurrency } from '@/lib/utils';
+import { apiPath } from '@/lib/api-path';
 
 export function ManualSearchModal() {
   const { isManualSearchOpen, setIsManualSearchOpen, addItem } = useBomStore();
@@ -42,10 +43,11 @@ export function ManualSearchModal() {
     setSearched(true);
 
     try {
-      const endpoint =
+      const endpoint = apiPath(
         searchMode === 'partnumber'
           ? '/api/mouser/search/partnumber'
-          : '/api/mouser/search/keyword';
+          : '/api/mouser/search/keyword'
+      );
 
       const payload =
         searchMode === 'partnumber'

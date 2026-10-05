@@ -15,6 +15,7 @@ import { MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity } from '@/lib/mouser/client';
+import { apiPath } from '@/lib/api-path';
 
 export function ReplacePartModal() {
   const {
@@ -53,7 +54,7 @@ export function ReplacePartModal() {
         headers['x-mouser-search-key'] = searchApiKey;
       }
 
-      const res = await fetch('/api/mouser/search/keyword', {
+      const res = await fetch(apiPath('/api/mouser/search/keyword'), {
         method: 'POST',
         headers,
         body: JSON.stringify({ keyword: q, records: 15 }),

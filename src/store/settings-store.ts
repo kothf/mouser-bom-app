@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiPath } from '@/lib/api-path';
 
 export interface SettingsState {
   searchApiKey: string;
@@ -36,7 +37,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, searchApiKey: key }));
     } catch {}
-    fetch('/api/mouser/settings', {
+    fetch(apiPath('/api/mouser/settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ searchApiKey: key }),
@@ -49,7 +50,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, cartApiKey: key }));
     } catch {}
-    fetch('/api/mouser/settings', {
+    fetch(apiPath('/api/mouser/settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cartApiKey: key }),
@@ -82,7 +83,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     } catch {}
 
     try {
-      await fetch('/api/mouser/settings', {
+      await fetch(apiPath('/api/mouser/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,8 +110,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         });
       }
 
-      // Also sync from server .env.local if present
-      const res = await fetch('/api/mouser/settings');
+      // Also sync from server if configured
+      const res = await fetch(apiPath('/api/mouser/settings'));
       if (res.ok) {
         const serverData = await res.json();
         set((state) => ({
