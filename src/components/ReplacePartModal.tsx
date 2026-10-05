@@ -65,7 +65,12 @@ export function ReplacePartModal() {
       }
 
       const data = await res.json();
-      setResults(data.parts || []);
+      if (data.error && (!data.parts || data.parts.length === 0)) {
+        setErrorMsg(data.error);
+        setResults([]);
+      } else {
+        setResults(data.parts || []);
+      }
     } catch (err: unknown) {
       setErrorMsg((err as Error).message || 'Failed to search replacement parts');
     } finally {
