@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { apiPath } from '@/lib/api-path';
+import { sanitizeApiKey } from '@/lib/mouser/client';
 
 export interface SettingsState {
   searchApiKey: string;
@@ -32,28 +33,30 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isSettingsOpen: false,
 
   setSearchApiKey: (key: string) => {
-    set({ searchApiKey: key });
+    const clean = sanitizeApiKey(key);
+    set({ searchApiKey: clean });
     try {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, searchApiKey: key }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, searchApiKey: clean }));
     } catch {}
     fetch(apiPath('/api/mouser/settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ searchApiKey: key }),
+      body: JSON.stringify({ searchApiKey: clean }),
     }).catch(() => {});
   },
 
   setCartApiKey: (key: string) => {
-    set({ cartApiKey: key });
+    const clean = sanitizeApiKey(key);
+    set({ cartApiKey: clean });
     try {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, cartApiKey: key }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, cartApiKey: clean }));
     } catch {}
     fetch(apiPath('/api/mouser/settings'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cartApiKey: key }),
+      body: JSON.stringify({ cartApiKey: clean }),
     }).catch(() => {});
   },
 
@@ -76,10 +79,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setIsSettingsOpen: (open: boolean) => set({ isSettingsOpen: open }),
 
   saveSettings: async (settings) => {
-    set(settings);
+    const cleanSettings = {
+      ...settings,
+      searchApiKey: sanitizeApiKey(settings.searchApiKey),
+      cartApiKey: sanitizeApiKey(settings.cartApiKey),
+    };
+    set(cleanSettings);
     try {
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...cleanSettings }));
     } catch {}
 
     try {
@@ -87,8 +95,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          searchApiKey: settings.searchApiKey,
-          cartApiKey: settings.cartApiKey,
+          searchApiKey: cleanSettings.searchApiKey,
+          cartApiKey: cleanSettings.cartApiKey,
         }),
       });
     } catch (e) {
@@ -103,8 +111,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (stored) {
         const parsed = JSON.parse(stored);
         set({
-          searchApiKey: parsed.searchApiKey || '',
-          cartApiKey: parsed.cartApiKey || '',
+          searchApiKey: sanitizeApiKey(parsed.searchApiKey || ''),
+          cartApiKey: sanitizeApiKey(parsed.cartApiKey || ''),
           rateLimitDelayMs: parsed.rateLimitDelayMs || 300,
           maxConcurrency: parsed.maxConcurrency || 3,
         });

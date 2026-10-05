@@ -37,7 +37,7 @@ export class MouserClient {
       return { parts: [], error: 'Empty part number provided' };
     }
 
-    const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
+    const key = sanitizeApiKey(apiKeyOverride || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '');
 
     if (!key) {
       return {
@@ -136,7 +136,7 @@ export class MouserClient {
       return { parts: [], totalResults: 0 };
     }
 
-    const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
+    const key = sanitizeApiKey(apiKeyOverride || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '');
 
     if (!key) {
       return {
@@ -215,7 +215,7 @@ export class MouserClient {
     apiKeyOverride?: string,
     existingCartKey?: string
   ): Promise<MouserCartResponse> {
-    const key = apiKeyOverride?.trim() || this.defaultCartKey || process.env.MOUSER_CART_API_KEY || '';
+    const key = sanitizeApiKey(apiKeyOverride || this.defaultCartKey || process.env.MOUSER_CART_API_KEY || '');
 
     if (!key) {
       throw new Error('Mouser Cart API Key is required to create a shopping cart. Please configure it in Settings.');
@@ -268,19 +268,19 @@ export class MouserClient {
    * Verify an API key with a test call
    */
   public async verifyApiKey(apiKey: string): Promise<{ valid: boolean; message: string }> {
-    const trimmed = (apiKey || '').trim();
-    if (!trimmed || trimmed.length < 8) {
-      return { valid: false, message: 'API key is too short or empty' };
+    const key = sanitizeApiKey(apiKey);
+    if (!key || key.length < 8) {
+      return { valid: false, message: 'API key is invalid, too short, or empty' };
     }
 
     try {
-      const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(trimmed)}`;
+      const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(key)}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'x-mouser-api-key': trimmed,
+          'x-mouser-api-key': key,
         },
         body: JSON.stringify({
           SearchByPartRequest: {
@@ -320,6 +320,25 @@ export class MouserClient {
       return { valid: false, message: (err as Error).message || 'Connection failed' };
     }
   }
+}
+
+/**
+ * Utility: Clean and sanitize Mouser API keys.
+ * Removes wrapping quotes, whitespace, trailing/leading non-key labels,
+ * and extracts valid UUID string to prevent "Invalid unique identifier" from Mouser API.
+ */
+export function sanitizeApiKey(raw: string | undefined | null): string {
+  if (!raw) return '';
+  const clean = raw.trim().replace(/^['"`]+|['"`]+$/g, '').trim();
+
+  // If a full UUID pattern is contained (e.g. "Key: a8e09a38-838d-4423-b03f-c45fc2f29373")
+  const uuidMatch = clean.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+  if (uuidMatch) {
+    return uuidMatch[0].toLowerCase();
+  }
+
+  // Fallback: remove spaces, control characters and non-alphanumeric except hyphen
+  return clean.replace(/[^a-zA-Z0-9-]/g, '').trim();
 }
 
 /**

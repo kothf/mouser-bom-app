@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/settings-store';
 import { apiPath } from '@/lib/api-path';
+import { sanitizeApiKey } from '@/lib/mouser/client';
 
 export function SettingsModal() {
   const {
@@ -53,11 +54,13 @@ export function SettingsModal() {
   if (!isSettingsOpen) return null;
 
   const handleTestKey = async () => {
-    if (!localSearchKey.trim()) {
+    const cleanKey = sanitizeApiKey(localSearchKey);
+    if (!cleanKey) {
       setTestResult({ valid: false, message: 'Please enter a Search API Key to test' });
       return;
     }
 
+    setLocalSearchKey(cleanKey);
     setTestingKey(true);
     setTestResult(null);
 
@@ -65,7 +68,7 @@ export function SettingsModal() {
       const res = await fetch(apiPath('/api/mouser/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: localSearchKey.trim() }),
+        body: JSON.stringify({ apiKey: cleanKey }),
       });
       const data = await res.json();
       setTestResult({ valid: data.valid, message: data.message });
@@ -77,10 +80,14 @@ export function SettingsModal() {
   };
 
   const handleSave = async () => {
+    const cleanSearch = sanitizeApiKey(localSearchKey);
+    const cleanCart = sanitizeApiKey(localCartKey);
+    setLocalSearchKey(cleanSearch);
+    setLocalCartKey(cleanCart);
     setIsSaving(true);
     await saveSettings({
-      searchApiKey: localSearchKey.trim(),
-      cartApiKey: localCartKey.trim(),
+      searchApiKey: cleanSearch,
+      cartApiKey: cleanCart,
       rateLimitDelayMs: localDelay,
       maxConcurrency: localConcurrency,
     });
