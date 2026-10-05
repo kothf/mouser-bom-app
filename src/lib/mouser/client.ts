@@ -5,7 +5,6 @@ import {
   MouserCartResponse,
   MouserPriceBreak,
 } from './types';
-import { searchMockCatalog, generateSyntheticPart } from './mock-data';
 import { globalMouserRateLimiter } from './rate-limiter';
 
 const MOUSER_API_BASE = 'https://api.mouser.com/api/v1';
@@ -30,28 +29,21 @@ export class MouserClient {
   public async searchByPartNumber(
     partNumber: string,
     apiKeyOverride?: string,
-    useDemoMode: boolean = false,
     notes?: string,
     designator?: string
-  ): Promise<{ parts: MouserPart[]; isDemo: boolean; error?: string }> {
+  ): Promise<{ parts: MouserPart[]; error?: string }> {
     const rawClean = (partNumber || '').trim();
     if (!rawClean) {
-      return { parts: [], isDemo: false, error: 'Empty part number provided' };
+      return { parts: [], error: 'Empty part number provided' };
     }
 
     const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
 
-    // If demo mode or no key is configured
-    if (useDemoMode || !key) {
-      const mockResults = searchMockCatalog(rawClean, notes, designator);
-      if (mockResults.length === 0) {
-        return {
-          parts: [],
-          isDemo: true,
-          error: `Part "${rawClean}" not found in catalog.`,
-        };
-      }
-      return { parts: mockResults, isDemo: true };
+    if (!key) {
+      return {
+        parts: [],
+        error: 'Mouser Search API Key is not configured. Please configure your key in Settings.',
+      };
     }
 
     try {
@@ -114,19 +106,17 @@ export class MouserClient {
       if (parts.length === 0) {
         return {
           parts: [],
-          isDemo: false,
           error: `Part "${rawClean}" not found in Mouser catalog.`,
         };
       }
 
-      return { parts, isDemo: false };
+      return { parts };
     } catch (err: unknown) {
       const errMsg = (err as Error).message || 'Mouser search request failed';
       console.warn(`[MouserClient] Search failed for "${rawClean}":`, errMsg);
 
       return {
         parts: [],
-        isDemo: false,
         error: errMsg,
       };
     }
@@ -139,19 +129,21 @@ export class MouserClient {
     keyword: string,
     apiKeyOverride?: string,
     records: number = 20,
-    pageNumber: number = 1,
-    useDemoMode: boolean = false
-  ): Promise<{ parts: MouserPart[]; totalResults: number; isDemo: boolean; error?: string }> {
+    pageNumber: number = 1
+  ): Promise<{ parts: MouserPart[]; totalResults: number; error?: string }> {
     const cleanKeyword = (keyword || '').trim();
     if (!cleanKeyword) {
-      return { parts: [], totalResults: 0, isDemo: false };
+      return { parts: [], totalResults: 0 };
     }
 
     const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
 
-    if (useDemoMode || !key) {
-      const mockResults = searchMockCatalog(cleanKeyword);
-      return { parts: mockResults, totalResults: mockResults.length, isDemo: true };
+    if (!key) {
+      return {
+        parts: [],
+        totalResults: 0,
+        error: 'Mouser Search API Key is not configured. Please configure your key in Settings.',
+      };
     }
 
     try {
@@ -203,14 +195,13 @@ export class MouserClient {
 
       const parts = result.SearchResults?.Parts || [];
       const total = result.SearchResults?.NumberOfResult || parts.length;
-      return { parts, totalResults: total, isDemo: false };
+      return { parts, totalResults: total };
     } catch (err: unknown) {
       const errMsg = (err as Error).message || 'Keyword search failed';
       console.warn(`[MouserClient] Keyword search failed for "${cleanKeyword}":`, errMsg);
       return {
         parts: [],
         totalResults: 0,
-        isDemo: false,
         error: errMsg,
       };
     }
@@ -222,43 +213,12 @@ export class MouserClient {
   public async createCart(
     items: MouserCartItem[],
     apiKeyOverride?: string,
-    existingCartKey?: string,
-    useDemoMode: boolean = false
+    existingCartKey?: string
   ): Promise<MouserCartResponse> {
     const key = apiKeyOverride?.trim() || this.defaultCartKey || process.env.MOUSER_CART_API_KEY || '';
 
-    // In demo mode or if no key is configured, create a realistic mock cart session
-    if (useDemoMode || !key) {
-      const fakeCartKey =
-        existingCartKey ||
-        'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0;
-          const v = c === 'x' ? r : (r & 0x3) | 0x8;
-          return v.toString(16);
-        });
-
-      let grandTotal = 0;
-      const cartItems = items.map((item) => {
-        const unitPrice = 2.5; // mock baseline
-        const extendedPrice = unitPrice * item.Quantity;
-        grandTotal += extendedPrice;
-
-        return {
-          MouserPartNumber: item.MouserPartNumber,
-          Quantity: item.Quantity,
-          CustomerPartNumber: item.CustomerPartNumber,
-          UnitPrice: unitPrice,
-          ExtendedPrice: extendedPrice,
-        };
-      });
-
-      return {
-        CartKey: fakeCartKey,
-        CurrencyCode: 'USD',
-        Total: grandTotal,
-        CartItems: cartItems,
-        CheckoutUrl: `https://www.mouser.com/Cart/?CartKey=${fakeCartKey}`,
-      };
+    if (!key) {
+      throw new Error('Mouser Cart API Key is required to create a shopping cart. Please configure it in Settings.');
     }
 
     try {

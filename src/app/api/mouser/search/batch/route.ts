@@ -6,7 +6,7 @@ import { MouserPart } from '@/lib/mouser/types';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { partNumbers, useDemoMode } = body;
+    const { partNumbers } = body;
 
     if (!Array.isArray(partNumbers) || partNumbers.length === 0) {
       return NextResponse.json(
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const headerKey = req.headers.get('x-mouser-search-key') || undefined;
 
     // Process parts through rate limiter
-    const results: Record<string, { parts: MouserPart[]; isDemo: boolean; error?: string }> = {};
+    const results: Record<string, { parts: MouserPart[]; error?: string }> = {};
 
     await globalMouserRateLimiter.processBatch(
       partNumbers,
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         const desig = typeof item === 'string' ? undefined : item.designator;
         const clean = String(pn || '').trim();
         if (!clean) return;
-        const res = await mouserClient.searchByPartNumber(clean, headerKey, Boolean(useDemoMode), desc, desig);
+        const res = await mouserClient.searchByPartNumber(clean, headerKey, desc, desig);
         results[clean] = res;
       }
     );

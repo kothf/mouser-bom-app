@@ -6,10 +6,8 @@ import {
   Search,
   Settings,
   ShoppingCart,
-  Sparkles,
   Key,
   ShieldCheck,
-  Plus,
 } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -19,12 +17,10 @@ export function Navbar() {
     activeCart,
     setIsManualSearchOpen,
     setIsCartModalOpen,
-    items,
   } = useBomStore();
 
   const {
     searchApiKey,
-    useDemoMode,
     setIsSettingsOpen,
   } = useSettingsStore();
 
@@ -62,20 +58,15 @@ export function Navbar() {
         <div className="flex items-center gap-2.5">
           {/* Status Badge */}
           <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
-            {useDemoMode ? (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-amber-300 font-medium">Demo Mode</span>
-              </>
-            ) : searchApiKey ? (
+            {searchApiKey ? (
               <>
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-emerald-300 font-medium">Mouser Live API</span>
               </>
             ) : (
               <>
-                <Key className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-400">No Key (Demo Active)</span>
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-amber-300">API Key Required</span>
               </>
             )}
           </div>
@@ -107,7 +98,7 @@ export function Navbar() {
             title="Configure API Keys & Settings"
           >
             <Settings className="w-4 h-4" />
-            {!searchApiKey && !useDemoMode && (
+            {!searchApiKey && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
             )}
           </button>

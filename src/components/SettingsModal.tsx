@@ -19,7 +19,6 @@ export function SettingsModal() {
   const {
     searchApiKey,
     cartApiKey,
-    useDemoMode,
     rateLimitDelayMs,
     maxConcurrency,
     isSettingsOpen,
@@ -29,7 +28,6 @@ export function SettingsModal() {
 
   const [localSearchKey, setLocalSearchKey] = useState(searchApiKey);
   const [localCartKey, setLocalCartKey] = useState(cartApiKey);
-  const [localDemoMode, setLocalDemoMode] = useState(useDemoMode);
   const [localDelay, setLocalDelay] = useState(rateLimitDelayMs);
   const [localConcurrency, setLocalConcurrency] = useState(maxConcurrency);
 
@@ -44,13 +42,12 @@ export function SettingsModal() {
     if (isSettingsOpen) {
       setLocalSearchKey(searchApiKey);
       setLocalCartKey(cartApiKey);
-      setLocalDemoMode(useDemoMode);
       setLocalDelay(rateLimitDelayMs);
       setLocalConcurrency(maxConcurrency);
       setTestResult(null);
       setSavedSuccess(false);
     }
-  }, [isSettingsOpen, searchApiKey, cartApiKey, useDemoMode, rateLimitDelayMs, maxConcurrency]);
+  }, [isSettingsOpen, searchApiKey, cartApiKey, rateLimitDelayMs, maxConcurrency]);
 
   if (!isSettingsOpen) return null;
 
@@ -83,7 +80,6 @@ export function SettingsModal() {
     await saveSettings({
       searchApiKey: localSearchKey.trim(),
       cartApiKey: localCartKey.trim(),
-      useDemoMode: localDemoMode,
       rateLimitDelayMs: localDelay,
       maxConcurrency: localConcurrency,
     });
@@ -105,7 +101,7 @@ export function SettingsModal() {
             </div>
             <div>
               <h2 className="text-base font-semibold text-white">Mouser API & Integration Settings</h2>
-              <p className="text-xs text-slate-400">Configure your credentials, rate limits, and test modes</p>
+              <p className="text-xs text-slate-400">Configure your Mouser API credentials and rate limits</p>
             </div>
           </div>
           <button
@@ -118,30 +114,6 @@ export function SettingsModal() {
 
         {/* Content */}
         <div className="p-6 overflow-y-auto space-y-6 text-sm text-slate-300">
-          {/* Demo Mode Toggle */}
-          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="font-medium text-white flex items-center gap-2">
-                <span>Simulation / Demo Mode</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Recommended for Evaluation
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Uses realistic local electronic components data without calling live Mouser endpoints.
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={localDemoMode}
-                onChange={(e) => setLocalDemoMode(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-            </label>
-          </div>
-
           {/* Search API Key */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">

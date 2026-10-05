@@ -32,7 +32,7 @@ export interface BomState {
   setActiveCart: (cart: MouserCartResponse | null) => void;
 
   loadSavedBom: () => Promise<void>;
-  resolveAllItems: (searchApiKey?: string, useDemoMode?: boolean) => Promise<void>;
+  resolveAllItems: (searchApiKey?: string) => Promise<void>;
   getSummary: () => BOMSummary;
 }
 
@@ -335,7 +335,7 @@ export const useBomStore = create<BomState>((set, get) => ({
     set({ isLoaded: true });
   },
 
-  resolveAllItems: async (searchApiKey?: string, useDemoMode: boolean = false) => {
+  resolveAllItems: async (searchApiKey?: string) => {
     const { items } = get();
     if (items.length === 0) return;
 
@@ -367,7 +367,6 @@ export const useBomStore = create<BomState>((set, get) => ({
           headers,
           body: JSON.stringify({
             partNumber: item.rawPartNumber,
-            useDemoMode,
             description: item.notes,
             designator: item.designator,
           }),

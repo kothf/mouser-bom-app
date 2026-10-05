@@ -23,7 +23,7 @@ export function ReplacePartModal() {
     selectedItemForReplace,
     replaceItemPart,
   } = useBomStore();
-  const { searchApiKey, useDemoMode } = useSettingsStore();
+  const { searchApiKey } = useSettingsStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,7 +56,7 @@ export function ReplacePartModal() {
       const res = await fetch('/api/mouser/search/keyword', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ keyword: q, records: 15, useDemoMode }),
+        body: JSON.stringify({ keyword: q, records: 15 }),
       });
 
       if (!res.ok) {

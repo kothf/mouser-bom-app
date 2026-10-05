@@ -14,7 +14,7 @@ interface ColumnMappingModalProps {
 
 export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalProps) {
   const { setItems, resolveAllItems } = useBomStore();
-  const { searchApiKey, useDemoMode } = useSettingsStore();
+  const { searchApiKey } = useSettingsStore();
 
   const [mapping, setMapping] = useState<ColumnMapping>(
     parsedFile?.suggestedMapping || {
@@ -37,8 +37,8 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
     setItems(items);
     onClose();
 
-    // Trigger automatic resolution through Mouser API / Mock
-    resolveAllItems(searchApiKey, useDemoMode);
+    // Trigger automatic resolution through Mouser API
+    resolveAllItems(searchApiKey);
   };
 
   const previewRows = parsedFile.rows.slice(0, 5);

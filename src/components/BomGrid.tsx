@@ -50,7 +50,7 @@ export function BomGrid() {
     setIsCartModalOpen,
   } = useBomStore();
 
-  const { searchApiKey, cartApiKey, useDemoMode } = useSettingsStore();
+  const { searchApiKey, cartApiKey } = useSettingsStore();
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -101,7 +101,6 @@ export function BomGrid() {
         headers,
         body: JSON.stringify({
           items: validItems,
-          useDemoMode,
         }),
       });
 
@@ -513,7 +512,7 @@ export function BomGrid() {
         <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center">
           {/* Refresh / Resolve Button */}
           <button
-            onClick={() => resolveAllItems(searchApiKey, useDemoMode)}
+            onClick={() => resolveAllItems(searchApiKey)}
             disabled={isResolving}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 text-xs font-semibold shadow-sm transition"
           >

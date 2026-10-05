@@ -4,7 +4,7 @@ import { mouserClient } from '@/lib/mouser/client';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { partNumber, useDemoMode, description, notes, designator } = body;
+    const { partNumber, description, notes, designator } = body;
 
     if (!partNumber || typeof partNumber !== 'string') {
       return NextResponse.json(
@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
     const result = await mouserClient.searchByPartNumber(
       partNumber,
       headerKey,
-      Boolean(useDemoMode),
       description || notes,
       designator
     );

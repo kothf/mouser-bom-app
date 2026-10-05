@@ -20,7 +20,7 @@ import { formatCurrency } from '@/lib/utils';
 
 export function ManualSearchModal() {
   const { isManualSearchOpen, setIsManualSearchOpen, addItem } = useBomStore();
-  const { searchApiKey, useDemoMode } = useSettingsStore();
+  const { searchApiKey } = useSettingsStore();
 
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<'keyword' | 'partnumber'>('keyword');
@@ -49,8 +49,8 @@ export function ManualSearchModal() {
 
       const payload =
         searchMode === 'partnumber'
-          ? { partNumber: query.trim(), useDemoMode }
-          : { keyword: query.trim(), records: 20, useDemoMode };
+          ? { partNumber: query.trim() }
+          : { keyword: query.trim(), records: 20 };
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (searchApiKey) {

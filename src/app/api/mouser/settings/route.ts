@@ -7,12 +7,10 @@ export async function GET() {
   try {
     const searchApiKey = process.env.MOUSER_SEARCH_API_KEY || '';
     const cartApiKey = process.env.MOUSER_CART_API_KEY || '';
-    const useDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
     return NextResponse.json({
       searchApiKey,
       cartApiKey,
-      useDemoMode,
     });
   } catch (error: unknown) {
     return NextResponse.json(
@@ -25,7 +23,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { searchApiKey, cartApiKey, useDemoMode } = body;
+    const { searchApiKey, cartApiKey } = body;
 
     const envPath = path.resolve(process.cwd(), '.env.local');
     let envContent = '';
@@ -51,10 +49,6 @@ export async function POST(req: NextRequest) {
     if (typeof cartApiKey === 'string') {
       updated = updateEnvVar(updated, 'MOUSER_CART_API_KEY', cartApiKey.trim());
       process.env.MOUSER_CART_API_KEY = cartApiKey.trim();
-    }
-    if (typeof useDemoMode === 'boolean') {
-      updated = updateEnvVar(updated, 'NEXT_PUBLIC_DEMO_MODE', String(useDemoMode));
-      process.env.NEXT_PUBLIC_DEMO_MODE = String(useDemoMode);
     }
 
     fs.writeFileSync(envPath, updated, 'utf8');

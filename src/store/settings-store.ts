@@ -3,21 +3,18 @@ import { create } from 'zustand';
 export interface SettingsState {
   searchApiKey: string;
   cartApiKey: string;
-  useDemoMode: boolean;
   rateLimitDelayMs: number;
   maxConcurrency: number;
   isSettingsOpen: boolean;
 
   setSearchApiKey: (key: string) => void;
   setCartApiKey: (key: string) => void;
-  setUseDemoMode: (enabled: boolean) => void;
   setRateLimitDelayMs: (ms: number) => void;
   setMaxConcurrency: (count: number) => void;
   setIsSettingsOpen: (open: boolean) => void;
   saveSettings: (settings: {
     searchApiKey: string;
     cartApiKey: string;
-    useDemoMode: boolean;
     rateLimitDelayMs: number;
     maxConcurrency: number;
   }) => Promise<void>;
@@ -29,7 +26,6 @@ const STORAGE_KEY = 'mouser_bom_settings_v1';
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   searchApiKey: '',
   cartApiKey: '',
-  useDemoMode: false,
   rateLimitDelayMs: 300,
   maxConcurrency: 3,
   isSettingsOpen: false,
@@ -57,19 +53,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cartApiKey: key }),
-    }).catch(() => {});
-  },
-
-  setUseDemoMode: (enabled: boolean) => {
-    set({ useDemoMode: enabled });
-    try {
-      const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, useDemoMode: enabled }));
-    } catch {}
-    fetch('/api/mouser/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ useDemoMode: enabled }),
     }).catch(() => {});
   },
 
@@ -105,7 +88,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         body: JSON.stringify({
           searchApiKey: settings.searchApiKey,
           cartApiKey: settings.cartApiKey,
-          useDemoMode: settings.useDemoMode,
         }),
       });
     } catch (e) {
@@ -122,7 +104,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         set({
           searchApiKey: parsed.searchApiKey || '',
           cartApiKey: parsed.cartApiKey || '',
-          useDemoMode: typeof parsed.useDemoMode === 'boolean' ? parsed.useDemoMode : false,
           rateLimitDelayMs: parsed.rateLimitDelayMs || 300,
           maxConcurrency: parsed.maxConcurrency || 3,
         });
@@ -135,10 +116,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         set((state) => ({
           searchApiKey: state.searchApiKey || serverData.searchApiKey || '',
           cartApiKey: state.cartApiKey || serverData.cartApiKey || '',
-          useDemoMode:
-            typeof serverData.useDemoMode === 'boolean' && !state.searchApiKey
-              ? serverData.useDemoMode
-              : state.useDemoMode,
         }));
       }
     } catch (e) {

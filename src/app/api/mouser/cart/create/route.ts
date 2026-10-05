@@ -5,7 +5,7 @@ import { MouserCartItem } from '@/lib/mouser/types';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { items, cartKey, useDemoMode } = body;
+    const { items, cartKey } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -32,8 +32,7 @@ export async function POST(req: NextRequest) {
     const cartResponse = await mouserClient.createCart(
       validItems,
       headerKey,
-      cartKey,
-      Boolean(useDemoMode)
+      cartKey
     );
 
     return NextResponse.json(cartResponse);

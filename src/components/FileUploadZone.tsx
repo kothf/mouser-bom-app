@@ -14,8 +14,6 @@ import {
 import { parseBomFile, parseTextContent } from '@/lib/parser/bom-parser';
 import { ParsedRawFile } from '@/lib/mouser/types';
 import { SAMPLE_BOMS } from '@/lib/parser/sample-boms';
-import { useBomStore } from '@/store/bom-store';
-import { useSettingsStore } from '@/store/settings-store';
 
 interface FileUploadZoneProps {
   onParsedFile: (parsed: ParsedRawFile) => void;
@@ -28,9 +26,6 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const { setItems, resolveAllItems } = useBomStore();
-  const { searchApiKey, useDemoMode } = useSettingsStore();
 
   const handleFile = async (file: File) => {
     setIsParsing(true);
@@ -126,7 +121,7 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
 
         {/* 1-Click Sample BOMs */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400 hidden sm:inline">Try a Demo BOM:</span>
+          <span className="text-xs text-slate-400 hidden sm:inline">Sample BOMs:</span>
           <button
             onClick={() => loadSample('hammondPowerSupply')}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition"

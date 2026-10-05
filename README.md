@@ -67,7 +67,6 @@ mouser-bom-app/
 │   │   ├── mouser/
 │   │   │   ├── client.ts                    # Mouser REST API Client & price math
 │   │   │   ├── rate-limiter.ts              # Concurrency queue & backoff logic
-│   │   │   ├── mock-data.ts                 # High-fidelity electronic components catalog
 │   │   │   └── types.ts                     # TypeScript interfaces
 │   │   ├── parser/
 │   │   │   ├── bom-parser.ts                # XLSX / CSV / TXT parser

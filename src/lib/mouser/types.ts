@@ -122,7 +122,6 @@ export interface ParsedRawFile {
 export interface MouserApiConfig {
   searchApiKey?: string;
   cartApiKey?: string;
-  useDemoMode: boolean;
   rateLimitDelayMs: number;
   maxConcurrency: number;
 }
