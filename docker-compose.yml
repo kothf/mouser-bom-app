@@ -1,0 +1,21 @@
+services:
+  mouser-bom:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: /bom
+    container_name: mouser-bom
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_BASE_PATH=/bom
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    networks:
+      - proxy
+    # No ports exposed to host. Maximum security via internal Docker network only.
+
+networks:
+  proxy:
+    external: true
