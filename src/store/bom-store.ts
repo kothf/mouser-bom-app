@@ -380,7 +380,7 @@ export const useBomStore = create<BomState>((set, get) => ({
         const data = await res.json();
         const parts: MouserPart[] = data.parts || [];
 
-        if (parts.length > 0) {
+        if (parts.length > 0 && !data.error) {
           const matchedPart = parts[0];
           const stock = parseStockQuantity(matchedPart.Availability);
           const tier = calculateTierPrice(matchedPart.PriceBreaks, item.requestedQty);
@@ -408,21 +408,34 @@ export const useBomStore = create<BomState>((set, get) => ({
             meetsMoq,
             meetsMultiple,
             status,
-            errorMessage: data.error,
+            errorMessage: undefined,
           };
         } else {
+          // Part was not found on Mouser or an API error occurred
+          const errMsg = data.error || `Part "${item.rawPartNumber}" not found in Mouser catalog`;
+          const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit/i.test(errMsg);
+
           updatedItems[i] = {
             ...item,
-            status: 'unresolved',
-            errorMessage: 'Part not found in Mouser catalog',
+            matchedPart: undefined,
+            availableStock: 0,
+            unitPrice: 0,
+            extendedPrice: 0,
+            status: isAuthOrNetworkError ? 'error' : 'unresolved',
+            errorMessage: errMsg,
           };
         }
       } catch (err: unknown) {
         console.error(`Failed to resolve ${item.rawPartNumber}:`, err);
+        const errMsg = (err as Error).message || 'Connection error';
         updatedItems[i] = {
           ...item,
+          matchedPart: undefined,
+          availableStock: 0,
+          unitPrice: 0,
+          extendedPrice: 0,
           status: 'error',
-          errorMessage: (err as Error).message || 'Connection error',
+          errorMessage: errMsg,
         };
       }
 

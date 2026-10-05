@@ -34,60 +34,100 @@ export class MouserClient {
     notes?: string,
     designator?: string
   ): Promise<{ parts: MouserPart[]; isDemo: boolean; error?: string }> {
+    const rawClean = (partNumber || '').trim();
+    if (!rawClean) {
+      return { parts: [], isDemo: false, error: 'Empty part number provided' };
+    }
+
     const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
 
+    // If demo mode or no key is configured
     if (useDemoMode || !key) {
-      const mockResults = searchMockCatalog(partNumber, notes, designator);
+      const mockResults = searchMockCatalog(rawClean, notes, designator);
+      if (mockResults.length === 0) {
+        return {
+          parts: [],
+          isDemo: true,
+          error: `Part "${rawClean}" not found in catalog.`,
+        };
+      }
       return { parts: mockResults, isDemo: true };
     }
 
     try {
-      const result = await globalMouserRateLimiter.schedule(async () => {
-        const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(key)}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            SearchByPartRequest: {
-              mouserPartNumber: partNumber.trim(),
-              partSearchOptions: 'string',
+      const queryMouser = async (pn: string): Promise<MouserPart[]> => {
+        return await globalMouserRateLimiter.schedule(async () => {
+          const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(key)}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              'x-mouser-api-key': key,
             },
-          }),
+            body: JSON.stringify({
+              SearchByPartRequest: {
+                mouserPartNumber: pn,
+                partSearchOptions: 'None',
+              },
+            }),
+          });
+
+          if (res.status === 429) {
+            const err = new Error('HTTP 429: Too Many Requests to Mouser API (Rate limited)');
+            (err as { status?: number }).status = 429;
+            throw err;
+          }
+
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`Mouser API authorization failed (HTTP ${res.status}). Please check your API key in Settings.`);
+          }
+
+          const text = await res.text();
+          let data: MouserSearchResponse;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            throw new Error(`Invalid response from Mouser API (HTTP ${res.status})`);
+          }
+
+          if (data.Errors && data.Errors.length > 0) {
+            const errMsg = data.Errors.map((e) => e.Message).filter(Boolean).join('; ');
+            throw new Error(errMsg || 'Mouser API returned an error');
+          }
+
+          return data.SearchResults?.Parts || [];
         });
+      };
 
-        if (res.status === 429) {
-          const err = new Error('HTTP 429: Too Many Requests to Mouser API');
-          (err as { status?: number }).status = 429;
-          throw err;
+      // 1. First attempt: search with exact raw part number
+      let parts = await queryMouser(rawClean);
+
+      // 2. Second attempt: if 0 parts and partNumber has a manufacturer prefix (e.g. 80-C4AF3BW4470A3FK -> C4AF3BW4470A3FK), try stripped
+      if (parts.length === 0 && rawClean.includes('-')) {
+        const stripped = rawClean.replace(/^[0-9]{2,4}-/, '');
+        if (stripped !== rawClean && stripped.length >= 3) {
+          parts = await queryMouser(stripped);
         }
-
-        if (!res.ok) {
-          throw new Error(`Mouser API error: HTTP ${res.status} ${res.statusText}`);
-        }
-
-        const data: MouserSearchResponse = await res.json();
-        return data;
-      });
-
-      const parts = result.SearchResults?.Parts || [];
+      }
 
       if (parts.length === 0) {
-        // Fallback to synthetic if not found in Mouser
-        return { parts: [generateSyntheticPart(partNumber, notes, designator)], isDemo: true, error: 'Exact part not found on Mouser. Generated standard component fallback.' };
+        return {
+          parts: [],
+          isDemo: false,
+          error: `Part "${rawClean}" not found in Mouser catalog.`,
+        };
       }
 
       return { parts, isDemo: false };
     } catch (err: unknown) {
-      console.warn(`[MouserClient] Search failed for "${partNumber}", falling back to mock catalog:`, (err as Error).message);
-      // Fallback gracefully so the UI continues functioning
-      const mockResults = searchMockCatalog(partNumber, notes, designator);
+      const errMsg = (err as Error).message || 'Mouser search request failed';
+      console.warn(`[MouserClient] Search failed for "${rawClean}":`, errMsg);
+
       return {
-        parts: mockResults,
-        isDemo: true,
-        error: `Mouser API error: ${(err as Error).message}. (Showing simulated catalog fallback)`,
+        parts: [],
+        isDemo: false,
+        error: errMsg,
       };
     }
   }
@@ -102,10 +142,15 @@ export class MouserClient {
     pageNumber: number = 1,
     useDemoMode: boolean = false
   ): Promise<{ parts: MouserPart[]; totalResults: number; isDemo: boolean; error?: string }> {
+    const cleanKeyword = (keyword || '').trim();
+    if (!cleanKeyword) {
+      return { parts: [], totalResults: 0, isDemo: false };
+    }
+
     const key = apiKeyOverride?.trim() || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '';
 
     if (useDemoMode || !key) {
-      const mockResults = searchMockCatalog(keyword);
+      const mockResults = searchMockCatalog(cleanKeyword);
       return { parts: mockResults, totalResults: mockResults.length, isDemo: true };
     }
 
@@ -117,14 +162,15 @@ export class MouserClient {
           headers: {
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            'x-mouser-api-key': key,
           },
           body: JSON.stringify({
             SearchByKeywordRequest: {
-              keyword: keyword.trim(),
+              keyword: cleanKeyword,
               records,
               pageNumber,
-              searchOptions: 'string',
-              searchWithYourSignUpLanguage: 'string',
+              searchOptions: 'None',
+              searchWithYourSignUpLanguage: 'None',
             },
           }),
         });
@@ -135,11 +181,23 @@ export class MouserClient {
           throw err;
         }
 
-        if (!res.ok) {
-          throw new Error(`Mouser API error: HTTP ${res.status} ${res.statusText}`);
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(`Mouser API authorization failed (HTTP ${res.status}). Check your Search API Key.`);
         }
 
-        const data: MouserSearchResponse = await res.json();
+        const text = await res.text();
+        let data: MouserSearchResponse;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(`Invalid response from Mouser API (HTTP ${res.status})`);
+        }
+
+        if (data.Errors && data.Errors.length > 0) {
+          const errMsg = data.Errors.map((e) => e.Message).filter(Boolean).join('; ');
+          throw new Error(errMsg || 'Mouser API returned an error');
+        }
+
         return data;
       });
 
@@ -147,13 +205,13 @@ export class MouserClient {
       const total = result.SearchResults?.NumberOfResult || parts.length;
       return { parts, totalResults: total, isDemo: false };
     } catch (err: unknown) {
-      console.warn(`[MouserClient] Keyword search failed for "${keyword}":`, (err as Error).message);
-      const mockResults = searchMockCatalog(keyword);
+      const errMsg = (err as Error).message || 'Keyword search failed';
+      console.warn(`[MouserClient] Keyword search failed for "${cleanKeyword}":`, errMsg);
       return {
-        parts: mockResults,
-        totalResults: mockResults.length,
-        isDemo: true,
-        error: `Mouser API error: ${(err as Error).message}. (Showing simulated catalog fallback)`,
+        parts: [],
+        totalResults: 0,
+        isDemo: false,
+        error: errMsg,
       };
     }
   }
@@ -250,36 +308,51 @@ export class MouserClient {
    * Verify an API key with a test call
    */
   public async verifyApiKey(apiKey: string): Promise<{ valid: boolean; message: string }> {
-    if (!apiKey || apiKey.trim().length < 8) {
+    const trimmed = (apiKey || '').trim();
+    if (!trimmed || trimmed.length < 8) {
       return { valid: false, message: 'API key is too short or empty' };
     }
 
     try {
-      const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(apiKey.trim())}`;
+      const url = `${MOUSER_API_BASE}/search/partnumber?apiKey=${encodeURIComponent(trimmed)}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          'x-mouser-api-key': trimmed,
         },
         body: JSON.stringify({
           SearchByPartRequest: {
-            mouserPartNumber: 'STM32F401RET6',
-            partSearchOptions: 'string',
+            mouserPartNumber: 'NE555P',
+            partSearchOptions: 'None',
           },
         }),
       });
 
       if (res.status === 401 || res.status === 403) {
-        return { valid: false, message: 'Invalid API key or unauthorized' };
+        return { valid: false, message: `Invalid API key or unauthorized (HTTP ${res.status})` };
       }
 
       if (res.status === 429) {
-        return { valid: true, message: 'Key is valid, but currently rate-limited (HTTP 429)' };
+        return { valid: true, message: 'Key is valid, but currently rate-limited by Mouser (HTTP 429)' };
       }
 
-      if (res.ok) {
-        return { valid: true, message: 'API Key verified successfully with Mouser' };
+      const text = await res.text();
+      let data: MouserSearchResponse;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return { valid: false, message: `Mouser responded with HTTP ${res.status} (non-JSON)` };
+      }
+
+      if (data.Errors && data.Errors.length > 0) {
+        const errMsg = data.Errors.map((e) => e.Message).filter(Boolean).join('; ');
+        return { valid: false, message: errMsg || 'Mouser API rejected the key' };
+      }
+
+      if (res.ok && data.SearchResults) {
+        return { valid: true, message: 'Mouser Search API Key verified successfully' };
       }
 
       return { valid: false, message: `Mouser responded with HTTP ${res.status}` };
