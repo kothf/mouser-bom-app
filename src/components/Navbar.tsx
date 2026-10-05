@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Key,
   ShieldCheck,
+  ArrowLeft,
 } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -27,9 +28,20 @@ export function Navbar() {
   return (
     <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 min-h-16 flex items-center justify-between">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+        {/* Back to Homepage & Brand */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <a
+            href="https://aerocat.tech"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs font-semibold shadow-sm transition group shrink-0"
+            title="Return to aerocat.tech homepage"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5 text-blue-400" />
+            <span className="hidden xs:inline sm:inline">aerocat.tech</span>
+          </a>
+
+          <div className="h-6 w-px bg-slate-800 hidden sm:block shrink-0" />
+
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
             <Cpu className="w-5 h-5" />
           </div>
           <div>
