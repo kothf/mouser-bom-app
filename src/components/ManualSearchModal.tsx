@@ -20,9 +20,10 @@ import { formatCurrency } from '@/lib/utils';
 import { apiPath } from '@/lib/api-path';
 
 export function ManualSearchModal() {
-  const { isManualSearchOpen, setIsManualSearchOpen, addItem } = useBomStore();
+  const { isManualSearchOpen, setIsManualSearchOpen, addItem, items } = useBomStore();
   const { searchApiKey, setIsSettingsOpen } = useSettingsStore();
 
+  const [activeTab, setActiveTab] = useState<'search' | 'manual'>('search');
   const [query, setQuery] = useState('');
   const [searchMode, setSearchMode] = useState<'keyword' | 'partnumber'>('keyword');
   const [loading, setLoading] = useState(false);
@@ -32,7 +33,32 @@ export function ManualSearchModal() {
   const [designators, setDesignators] = useState<Record<string, string>>({});
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Manual entry fields
+  const [manualPartNumber, setManualPartNumber] = useState('');
+  const [manualQty, setManualQty] = useState(1);
+  const [manualDesignator, setManualDesignator] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+
   if (!isManualSearchOpen) return null;
+
+  const handleManualAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualPartNumber.trim()) return;
+
+    addItem({
+      rawPartNumber: manualPartNumber.trim(),
+      requestedQty: Math.max(1, manualQty || 1),
+      designator: manualDesignator.trim() || `Line ${items.length + 1}`,
+      notes: manualNotes.trim() || undefined,
+      isCustomPart: true,
+    });
+
+    setManualPartNumber('');
+    setManualQty(1);
+    setManualDesignator('');
+    setManualNotes('');
+    setIsManualSearchOpen(false);
+  };
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -118,25 +144,138 @@ export function ManualSearchModal() {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
       <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/70 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-              <Search className="w-5 h-5" />
+              {activeTab === 'search' ? <Search className="w-5 h-5" /> : <Plus className="w-5 h-5 text-emerald-400" />}
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">Search Mouser Electronic Components</h2>
-              <p className="text-xs text-slate-400">Search by Manufacturer Part Number (MPN), Mouser #, or keyword</p>
+              <h2 className="text-base font-semibold text-white">
+                {activeTab === 'search' ? 'Search Mouser Electronic Components' : 'Add Line Item to BOM'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {activeTab === 'search'
+                  ? 'Search live Mouser inventory by MPN, Mouser #, or keyword'
+                  : 'Manually add an individual component line directly into your BOM'}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => setIsManualSearchOpen(false)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab('search')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
+                  activeTab === 'search'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Mouser Search
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('manual')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
+                  activeTab === 'manual'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Manual Entry
+              </button>
+            </div>
+
+            <button
+              onClick={() => setIsManualSearchOpen(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Search Bar & Options */}
+        {activeTab === 'manual' ? (
+          <form onSubmit={handleManualAdd} className="p-6 space-y-4 overflow-y-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Part Number (MPN or Mouser #) <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={manualPartNumber}
+                  onChange={(e) => setManualPartNumber(e.target.value)}
+                  placeholder="e.g. 647-UVZ2D221MHD, STM32F401RET6, 10k 0805..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Quantity Required <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  required
+                  value={manualQty}
+                  onChange={(e) => setManualQty(parseInt(e.target.value, 10) || 1)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Designator / Reference (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={manualDesignator}
+                  onChange={(e) => setManualDesignator(e.target.value)}
+                  placeholder="e.g. C1, R12, U3..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Description / Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={manualNotes}
+                  onChange={(e) => setManualNotes(e.target.value)}
+                  placeholder="e.g. 220uF 200V Aluminum Electrolytic Capacitor..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsManualSearchOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!manualPartNumber.trim()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Line to BOM</span>
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {/* Search Bar & Options */}
         <div className="p-6 border-b border-slate-800 bg-slate-950/30 space-y-3">
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative flex-1">
@@ -211,14 +350,54 @@ export function ManualSearchModal() {
           )}
 
           {results.length === 0 && searched && !loading && (
-            <div className="text-center py-12 text-slate-500 text-xs">
-              No component matches found for &quot;{query}&quot;. Try broadening your keywords or entering the exact MPN.
+            <div className="text-center py-8 text-slate-500 text-xs space-y-3">
+              <p>No component matches found for &quot;{query}&quot;. Try broadening your keywords or entering the exact MPN.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  addItem({
+                    rawPartNumber: query.trim(),
+                    requestedQty: 1,
+                    designator: `Line ${items.length + 1}`,
+                    notes: 'Manual entry',
+                    isCustomPart: true,
+                  });
+                  setIsManualSearchOpen(false);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add &quot;{query}&quot; to BOM anyway</span>
+              </button>
+            </div>
+          )}
+
+          {errorMsg && query.trim() && !loading && (
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-300">Add &quot;{query}&quot; as unverified line item?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  addItem({
+                    rawPartNumber: query.trim(),
+                    requestedQty: 1,
+                    designator: `Line ${items.length + 1}`,
+                    notes: 'Manual entry',
+                    isCustomPart: true,
+                  });
+                  setIsManualSearchOpen(false);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shrink-0 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add &quot;{query}&quot; to BOM</span>
+              </button>
             </div>
           )}
 
           {!searched && !loading && (
             <div className="text-center py-12 text-slate-500 text-xs">
-              Type a part number or description above to search live Mouser inventory.
+              Type a part number or description above to search live Mouser inventory, or switch to the &quot;Manual Entry&quot; tab.
             </div>
           )}
 
@@ -393,6 +572,8 @@ export function ManualSearchModal() {
             );
           })}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

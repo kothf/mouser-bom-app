@@ -113,13 +113,24 @@ export default function Home() {
         ) : (
           /* Empty State: Initial Ingestion Flow */
           <div className="space-y-8">
-            <div className="text-center max-w-2xl mx-auto space-y-2">
+            <div className="text-center max-w-2xl mx-auto space-y-3">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                 Bill of Materials (BOM) &amp; Mouser Cart Studio
               </h1>
               <p className="text-sm text-slate-400">
                 Ingest component spreadsheets, query Mouser Electronics in real-time for live stock and volume price tiers, and export directly to a Mouser Shopping Cart.
               </p>
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsManualSearchOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950 transition"
+                  title="Add an individual line item manually"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Line</span>
+                </button>
+              </div>
             </div>
 
             {/* Primary Dropzone */}

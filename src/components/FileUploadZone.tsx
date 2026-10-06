@@ -10,16 +10,19 @@ import {
   Loader2,
   ArrowRight,
   Info,
+  Plus,
 } from 'lucide-react';
 import { parseBomFile, parseTextContent } from '@/lib/parser/bom-parser';
 import { ParsedRawFile } from '@/lib/mouser/types';
 import { SAMPLE_BOMS } from '@/lib/parser/sample-boms';
+import { useBomStore } from '@/store/bom-store';
 
 interface FileUploadZoneProps {
   onParsedFile: (parsed: ParsedRawFile) => void;
 }
 
 export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
+  const { setIsManualSearchOpen } = useBomStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
   const [pastedText, setPastedText] = useState('');
@@ -117,6 +120,16 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
             <ClipboardPaste className="w-4 h-4" />
             <span>Paste Raw BOM Text</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setIsManualSearchOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition"
+            title="Add an individual line item manually"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Line</span>
+          </button>
         </div>
 
         {/* 1-Click Sample BOMs */}
@@ -189,10 +202,25 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
             Supports Microsoft Excel (<span className="text-slate-300 font-mono">.xlsx, .xls</span>), CSV, TSV, or plain text BOM lists.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 mb-4">
             <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Auto Column Detection</span>
             <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Dynamic Header Mapping</span>
             <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Batch Rate Limiting</span>
+          </div>
+
+          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center gap-2">
+            <span className="text-xs text-slate-400">Prefer adding parts individually?</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsManualSearchOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Line</span>
+            </button>
           </div>
         </div>
       )}
