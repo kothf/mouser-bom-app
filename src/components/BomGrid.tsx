@@ -27,6 +27,7 @@ import {
   ArrowUpDown,
   Sparkles,
   ArrowLeftRight,
+  Key,
 } from 'lucide-react';
 import { BOMItem } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
@@ -183,11 +184,13 @@ export function BomGrid() {
                 </div>
               );
             case 'error':
+              const isKeyRejected = /identifier/i.test(item.errorMessage || '');
+              const isKeyMissing = /api key|unauthorized/i.test(item.errorMessage || '');
               return (
                 <div className="flex items-center gap-1.5 text-rose-400" title={item.errorMessage || 'Error'}>
                   <XCircle className="w-4 h-4 shrink-0" />
                   <span className="text-[11px] font-semibold uppercase tracking-wider">
-                    {/api key|unauthorized/i.test(item.errorMessage || '') ? 'No API Key' : 'Error'}
+                    {isKeyRejected ? 'Key Rejected' : isKeyMissing ? 'No API Key' : 'Error'}
                   </span>
                 </div>
               );
@@ -340,13 +343,32 @@ export function BomGrid() {
           const inStock = stock >= item.requestedQty;
 
           if (!item.matchedPart) {
+            const isIdentifierError = /identifier/i.test(item.errorMessage || '');
+            const isKeyMissing = /api key|unauthorized/i.test(item.errorMessage || '');
             return (
               <div className="space-y-0.5">
-                <span className="font-mono text-xs font-semibold text-slate-500">
-                  {item.status === 'error' ? 'Key Missing' : '—'}
+                <span
+                  className={`font-mono text-xs font-semibold ${
+                    item.status === 'error' ? 'text-rose-400' : 'text-slate-500'
+                  }`}
+                >
+                  {item.status === 'error'
+                    ? isIdentifierError
+                      ? 'Key Rejected'
+                      : isKeyMissing
+                      ? 'Key Missing'
+                      : 'Error'
+                    : '—'}
                 </span>
-                <p className="text-[10px] text-slate-500 truncate max-w-[110px]" title={item.errorMessage || 'Part not resolved'}>
-                  {item.status === 'error' ? 'Check Settings' : 'Not matched'}
+                <p
+                  className="text-[10px] text-slate-400 truncate max-w-[130px]"
+                  title={item.errorMessage || 'Part not resolved'}
+                >
+                  {item.status === 'error'
+                    ? isIdentifierError
+                      ? 'Invalid identifier'
+                      : 'Check Settings (⚙️)'
+                    : 'Not matched'}
                 </p>
               </div>
             );
@@ -521,6 +543,32 @@ export function BomGrid() {
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden mb-12">
+      {/* Alert banner when API key is rejected */}
+      {items.some((i) => /identifier|rejected/i.test(i.errorMessage || '')) && !isResolving && (
+        <div className="bg-gradient-to-r from-rose-950/90 via-red-950/70 to-slate-900 border-b border-rose-500/40 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400">
+              <AlertTriangle className="w-4 h-4 text-rose-400" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-white">
+                Mouser API Key Rejected: &quot;Invalid unique identifier&quot;
+              </p>
+              <p className="text-[11px] text-slate-300">
+                Mouser rejected the configured key. Please ensure your <strong>Mouser Search API Key</strong> (not Cart/Order key) is entered in Settings.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => useSettingsStore.getState().setIsSettingsOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950 shrink-0 transition"
+          >
+            <Key className="w-3.5 h-3.5 text-white" />
+            <span>Open Settings (⚙️)</span>
+          </button>
+        </div>
+      )}
+
       {/* Banner when parts need resolution */}
       {hasUnresolved && !isResolving && (
         <div className="bg-gradient-to-r from-blue-950/90 via-indigo-950/70 to-slate-900 border-b border-blue-500/30 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

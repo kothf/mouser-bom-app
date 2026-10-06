@@ -15,6 +15,10 @@ export async function POST(req: NextRequest) {
 
     // Allow user to supply their own key via header or fallback to server env
     const headerKey = req.headers.get('x-mouser-search-key') || undefined;
+    const masked = headerKey
+      ? `${headerKey.slice(0, 4)}...${headerKey.slice(-4)} (len=${headerKey.length})`
+      : 'NONE';
+    console.log(`[API /search/partnumber] Received key: ${masked} for "${partNumber}"`);
 
     const result = await mouserClient.searchByPartNumber(
       partNumber,

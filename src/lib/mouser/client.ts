@@ -85,6 +85,9 @@ export class MouserClient {
 
           if (data.Errors && data.Errors.length > 0) {
             const errMsg = data.Errors.map((e) => e.Message).filter(Boolean).join('; ');
+            if (/invalid unique identifier/i.test(errMsg)) {
+              throw new Error('Mouser API key rejected: "Invalid unique identifier". Please ensure your Mouser Search API Key (not Cart/Order key) is configured in Settings.');
+            }
             throw new Error(errMsg || 'Mouser API returned an error');
           }
 
@@ -187,6 +190,9 @@ export class MouserClient {
 
         if (data.Errors && data.Errors.length > 0) {
           const errMsg = data.Errors.map((e) => e.Message).filter(Boolean).join('; ');
+          if (/invalid unique identifier/i.test(errMsg)) {
+            throw new Error('Mouser API key rejected: "Invalid unique identifier". Please ensure your Mouser Search API Key (not Cart/Order key) is configured in Settings.');
+          }
           throw new Error(errMsg || 'Mouser API returned an error');
         }
 
@@ -329,7 +335,13 @@ export class MouserClient {
  */
 export function sanitizeApiKey(raw: string | undefined | null): string {
   if (!raw) return '';
-  const clean = raw.trim().replace(/^['"`]+|['"`]+$/g, '').trim();
+  const str = String(raw).trim();
+  const clean = str.replace(/^['"`]+|['"`]+$/g, '').trim();
+
+  // Guard against literal string values like "undefined", "null", "[object Object]"
+  if (/^undefined$|^null$|^none$|^\[object/i.test(clean)) {
+    return '';
+  }
 
   // If a full UUID pattern is contained (e.g. "Key: a8e09a38-838d-4423-b03f-c45fc2f29373")
   const uuidMatch = clean.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);

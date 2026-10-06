@@ -202,6 +202,24 @@ export function SettingsModal() {
               </div>
             </div>
 
+            {/* Key format guidance and validation */}
+            <div className="space-y-1">
+              <p className="text-[11px] text-slate-400">
+                ⚠️ Enter your <strong>Search API Key</strong> (from <a href="https://www.mouser.com/api-search/" target="_blank" rel="noreferrer" className="text-blue-400 underline">mouser.com/api-search</a>). Mouser rejects Cart/Order keys with &quot;Invalid unique identifier&quot;.
+              </p>
+              {localSearchKey.trim() && (
+                <p className={`text-[11px] font-mono ${
+                  /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.test(localSearchKey)
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}>
+                  {/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.test(localSearchKey)
+                    ? '✓ Valid 36-character UUID format detected'
+                    : '⚠️ Key should be a 36-character UUID (e.g. 12345678-abcd-1234-abcd-1234567890ab)'}
+                </p>
+              )}
+            </div>
+
             {/* Test Connection Button */}
             <div className="flex items-center justify-between pt-1">
               <button

@@ -149,7 +149,7 @@ async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Pro
       };
     } else {
       const errMsg = data.error || `Part "${item.rawPartNumber}" not found in Mouser catalog`;
-      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit/i.test(errMsg);
+      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected/i.test(errMsg);
 
       return {
         ...item,
