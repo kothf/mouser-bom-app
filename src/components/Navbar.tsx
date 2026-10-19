@@ -1,124 +1,113 @@
 'use client';
 
 import React from 'react';
-import {
-  Cpu,
-  Search,
-  Settings,
-  ShoppingCart,
-  Key,
-  ShieldCheck,
-  ArrowLeft,
-} from 'lucide-react';
+import { Cpu, Search, Settings, ShoppingCart, ArrowLeft } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 export function Navbar() {
-  const {
-    supplier,
-    activeCart,
-    setIsManualSearchOpen,
-    setIsCartModalOpen,
-  } = useBomStore();
+  const { supplier, activeCart, setIsManualSearchOpen, setIsCartModalOpen } = useBomStore();
 
-  const {
-    searchApiKey,
-    digikeyClientId,
-    digikeyClientSecret,
-    setIsSettingsOpen,
-  } = useSettingsStore();
+  const { searchApiKey, digikeyClientId, digikeyClientSecret, setIsSettingsOpen } = useSettingsStore();
 
   const hasCredentials =
     supplier === 'digikey' ? Boolean(digikeyClientId && digikeyClientSecret) : Boolean(searchApiKey);
+  const label = SUPPLIER_LABELS[supplier];
 
   return (
-    <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 min-h-16 flex items-center justify-between">
+    <header className="border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md sticky top-0 z-30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         {/* Back to Homepage & Brand */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <a
             href="https://aerocat.tech"
-            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 text-xs font-semibold shadow-sm transition group shrink-0"
+            className="inline-flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 text-xs font-medium transition group shrink-0"
             title="Return to aerocat.tech homepage"
+            aria-label="Return to aerocat.tech homepage"
           >
-            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5 text-blue-400" />
-            <span className="hidden xs:inline sm:inline">aerocat.tech</span>
+            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+            <span className="hidden md:inline">aerocat.tech</span>
           </a>
 
-          <div className="h-6 w-px bg-slate-800 hidden sm:block shrink-0" />
+          <div className="h-6 w-px bg-slate-800 shrink-0" />
 
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
-            <Cpu className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-white tracking-tight text-base sm:text-lg">
-                BOM Studio
-              </span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                PRO
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+              <Cpu className="w-4.5 h-4.5" />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <span className="block font-semibold text-white tracking-tight text-[15px]">BOM Studio</span>
+              <span className="hidden sm:block text-[11px] text-slate-500 truncate">
+                Parts search &amp; carts for Mouser and DigiKey
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 hidden sm:block">
-              Mouser &amp; DigiKey Bill of Materials Search &amp; Cart Automation
-            </p>
-            <div className="mt-1 flex items-center">
-              <div className="zx-spectrum-badge whitespace-nowrap flex-nowrap shrink-0">
-                <span className="zx-rainbow-stripe" aria-hidden="true" />
-                <span className="zx-spectrum-text whitespace-nowrap">Designed by Andrey Dumchin - 4X5VA</span>
-                <span className="zx-rainbow-stripe" aria-hidden="true" />
-              </div>
+          </div>
+
+          <div className="hidden lg:block ml-2 shrink-0">
+            <div className="zx-spectrum-badge">
+              <span className="zx-rainbow-stripe" aria-hidden="true" />
+              <span className="zx-spectrum-text">Designed by Andrey Dumchin - 4X5VA</span>
+              <span className="zx-rainbow-stripe" aria-hidden="true" />
             </div>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Status Badge */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
-            {hasCredentials ? (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-300 font-medium">{SUPPLIER_LABELS[supplier]} Live API</span>
-              </>
-            ) : (
-              <>
-                <Key className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-amber-300">{SUPPLIER_LABELS[supplier]} Key Required</span>
-              </>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className={`hidden md:inline-flex items-center gap-2 h-8 px-3 rounded-full border text-xs font-medium transition ${
+              hasCredentials
+                ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-300 hover:bg-emerald-500/10'
+                : 'border-amber-500/30 bg-amber-500/5 text-amber-300 hover:bg-amber-500/10'
+            }`}
+            title={hasCredentials ? `${label} API connected` : `Add your ${label} API credentials in Settings`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${hasCredentials ? 'bg-emerald-400' : 'bg-amber-400'}`}
+              aria-hidden="true"
+            />
+            {hasCredentials ? `${label} connected` : `${label} not connected`}
+          </button>
 
           {/* Search Button */}
           <button
+            type="button"
             onClick={() => setIsManualSearchOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow-sm transition"
+            className="inline-flex items-center gap-2 h-8 px-2.5 sm:px-3 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/80 text-xs font-medium transition"
+            aria-label={`Search ${label}`}
           >
-            <Search className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Search {SUPPLIER_LABELS[supplier]}</span>
+            <Search className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">Search {label}</span>
           </button>
 
           {/* Active Cart Quick Link */}
           {activeCart && (
             <button
+              type="button"
               onClick={() => setIsCartModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 sm:px-3 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition"
+              aria-label="Open cart"
             >
               <ShoppingCart className="w-3.5 h-3.5" />
-              <span>Cart Ready</span>
+              <span className="hidden sm:inline">Cart ready</span>
             </button>
           )}
 
           {/* Settings Button */}
           <button
+            type="button"
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition relative"
-            title="Configure API Keys & Settings"
+            className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition relative"
+            title="API keys & settings"
+            aria-label="API keys & settings"
           >
             <Settings className="w-4 h-4" />
             {!hasCredentials && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950" />
             )}
           </button>
         </div>

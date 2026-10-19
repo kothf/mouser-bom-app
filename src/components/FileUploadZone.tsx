@@ -94,88 +94,64 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
     onParsedFile(parsed);
   };
 
+  const tabs = [
+    { id: 'upload' as const, icon: FileSpreadsheet, label: 'File', long: 'Spreadsheet / CSV / TXT' },
+    { id: 'paste' as const, icon: ClipboardPaste, label: 'Paste', long: 'Paste text' },
+    { id: 'cad' as const, icon: Zap, label: 'Tube CAD', long: 'Tube Amp CAD (keywords)' },
+  ];
+
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+    <div className="bg-slate-900/70 border border-slate-800 rounded-2xl shadow-xl shadow-black/20 relative overflow-hidden">
       {/* Tab Selector */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4 mb-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'upload'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Upload Spreadsheet / CSV / TXT</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('paste')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'paste'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <ClipboardPaste className="w-4 h-4" />
-            <span>Paste Raw BOM Text</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('cad')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'cad'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>Tube Amp CAD (Keywords)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsManualSearchOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition"
-            title="Add an individual line item manually"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Line</span>
-          </button>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 sm:px-5">
+        <div role="tablist" aria-label="Import source" className="flex items-center gap-1 overflow-x-auto -mb-px">
+          {tabs.map(({ id, icon: Icon, label, long }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center gap-2 px-3 py-3.5 text-xs font-medium whitespace-nowrap border-b-2 transition ${
+                  isActive
+                    ? 'border-blue-500 text-white'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : ''}`} />
+                <span className="sm:hidden">{label}</span>
+                <span className="hidden sm:inline">{long}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {/* 1-Click Sample BOMs */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400 hidden sm:inline">Sample BOMs:</span>
-          <button
-            onClick={() => loadSample('hammondPowerSupply')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Hammond Tube Supply</span>
-          </button>
-          <button
-            onClick={() => loadSample('iotNode')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-700 transition"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span>IoT Sensor Node</span>
-          </button>
-          <button
-            onClick={() => loadSample('motorController')}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 transition"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>STM32 Controller</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsManualSearchOpen(true)}
+          className="hidden sm:inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition shrink-0"
+          title="Add an individual line item manually"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Add Line</span>
+        </button>
       </div>
 
+      <div className="p-4 sm:p-5">
       {/* Tab 1: Drag & Drop Upload */}
       {activeTab === 'upload' && (
+        <div className="space-y-4">
         <div
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);
@@ -183,10 +159,10 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center ${
+          className={`border-2 border-dashed rounded-xl px-6 py-10 text-center cursor-pointer transition flex flex-col items-center justify-center ${
             isDragging
               ? 'border-blue-500 bg-blue-500/10'
-              : 'border-slate-700 hover:border-slate-600 bg-slate-950/40 hover:bg-slate-950/70'
+              : 'border-slate-700/80 hover:border-blue-500/50 bg-slate-950/40 hover:bg-slate-950/70'
           }`}
         >
           <input
@@ -201,41 +177,61 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
             className="hidden"
           />
 
-          <div className="p-3.5 rounded-full bg-blue-500/10 text-blue-400 mb-3">
+          <div className="p-3 rounded-xl bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20 mb-4">
             {isParsing ? (
-              <Loader2 className="w-8 h-8 animate-spin" />
+              <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
-              <UploadCloud className="w-8 h-8" />
+              <UploadCloud className="w-6 h-6" />
             )}
           </div>
 
           <h3 className="text-sm font-semibold text-white mb-1">
-            {isParsing ? 'Parsing BOM file...' : 'Drop your BOM spreadsheet here, or click to browse'}
+            {isParsing ? 'Reading BOM file…' : (
+              <>
+                Drop your BOM here, or <span className="text-blue-400">browse files</span>
+              </>
+            )}
           </h3>
-          <p className="text-xs text-slate-400 max-w-md mb-3">
-            Supports Microsoft Excel (<span className="text-slate-300 font-mono">.xlsx, .xls</span>), CSV, TSV, or plain text BOM lists.
+          <p className="text-xs text-slate-400 max-w-md">
+            Excel (<span className="text-slate-300 font-mono">.xlsx, .xls</span>), CSV, TSV or plain text. Columns are detected
+            automatically and you can adjust the mapping before import.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 mb-4">
-            <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Auto Column Detection</span>
-            <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Dynamic Header Mapping</span>
-            <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700">Batch Rate Limiting</span>
-          </div>
-
-          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-center gap-2">
-            <span className="text-xs text-slate-400">Prefer adding parts individually?</span>
+          <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-400">
+            <span>Prefer adding parts one by one?</span>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setIsManualSearchOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition"
+              className="inline-flex items-center gap-1 font-semibold text-emerald-400 hover:text-emerald-300 transition"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Line</span>
             </button>
           </div>
+        </div>
+
+        {/* 1-Click Sample BOMs */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500 mr-1">Try a sample:</span>
+          {[
+            { key: 'hammondPowerSupply' as const, label: 'Hammond Tube Supply' },
+            { key: 'iotNode' as const, label: 'IoT Sensor Node' },
+            { key: 'motorController' as const, label: 'STM32 Controller' },
+          ].map((sample) => (
+            <button
+              key={sample.key}
+              type="button"
+              onClick={() => loadSample(sample.key)}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-full bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 transition"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>{sample.label}</span>
+            </button>
+          ))}
+        </div>
         </div>
       )}
 
@@ -249,15 +245,15 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
             placeholder={`STM32F401RET6 10 U1\nESP32-WROOM-32E 5 U2\nRC0603FR-0710KL 100 R1-R100\nCC0603KRX7R9BB104 100 C1-C100`}
             className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 font-mono leading-relaxed resize-y"
           />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-              <Info className="w-3.5 h-3.5 text-blue-400" />
-              <span>Delimited by comma, tab, or space: <code>PartNumber Qty [Designator]</code></span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-1.5 text-xs text-slate-400">
+              <Info className="w-3.5 h-3.5 text-blue-400 mt-0.5 shrink-0" />
+              <span>One part per line, separated by comma, tab or space: <code className="font-mono text-slate-300">PartNumber Qty [Designator]</code></span>
             </div>
             <button
               onClick={handlePasteSubmit}
               disabled={!pastedText.trim() || isParsing}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md transition"
+              className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-md transition"
             >
               {isParsing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
               <span>Process Text BOM</span>
@@ -271,10 +267,11 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
 
       {/* Error Alert */}
       {errorMessage && (
-        <div className="mt-4 p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300">
+        <div role="alert" className="mt-4 p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-xs text-rose-300">
           {errorMessage}
         </div>
       )}
+      </div>
     </div>
   );
 }

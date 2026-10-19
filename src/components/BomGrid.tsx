@@ -25,6 +25,8 @@ import {
   Package,
   Layers,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Sparkles,
   ArrowLeftRight,
   Key,
@@ -193,48 +195,48 @@ export function BomGrid() {
           switch (status) {
             case 'matched':
               return (
-                <div className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Matched</span>
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">Matched</span>
                 </div>
               );
             case 'low_stock':
               return (
-                <div className="flex items-center gap-1.5 text-amber-400" title={`Only ${item.availableStock} in stock!`}>
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Low Stock</span>
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-500/10 text-amber-400 ring-1 ring-inset ring-amber-500/20" title={`Only ${item.availableStock} in stock!`}>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">Low Stock</span>
                 </div>
               );
             case 'moq_warning':
               return (
-                <div className="flex items-center gap-1.5 text-orange-400" title={`MOQ is ${item.moq}, Mult is ${item.orderMultiple}`}>
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">MOQ Alert</span>
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-orange-500/10 text-orange-400 ring-1 ring-inset ring-orange-500/20" title={`MOQ is ${item.moq}, Mult is ${item.orderMultiple}`}>
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">MOQ Alert</span>
                 </div>
               );
             case 'unresolved':
               return (
-                <div className="flex items-center gap-1.5 text-rose-400" title={item.errorMessage || 'Not found'}>
-                  <XCircle className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Not Found</span>
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-rose-500/10 text-rose-400 ring-1 ring-inset ring-rose-500/20" title={item.errorMessage || 'Not found'}>
+                  <XCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">Not Found</span>
                 </div>
               );
             case 'error':
               const isKeyRejected = /identifier/i.test(item.errorMessage || '');
               const isKeyMissing = /api key|unauthorized/i.test(item.errorMessage || '');
               return (
-                <div className="flex items-center gap-1.5 text-rose-400" title={item.errorMessage || 'Error'}>
-                  <XCircle className="w-4 h-4 shrink-0" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-rose-500/10 text-rose-400 ring-1 ring-inset ring-rose-500/20" title={item.errorMessage || 'Error'}>
+                  <XCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">
                     {isKeyRejected ? 'Key Rejected' : isKeyMissing ? 'No API Key' : 'Error'}
                   </span>
                 </div>
               );
             default:
               return (
-                <div className="flex items-center gap-1.5 text-slate-500">
-                  <HelpCircle className="w-4 h-4" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider">Pending</span>
+                <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-800/60 text-slate-400 ring-1 ring-inset ring-slate-700/60">
+                  <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap">Pending</span>
                 </div>
               );
           }
@@ -315,7 +317,7 @@ export function BomGrid() {
           const item = info.row.original;
           const part = item.matchedPart;
           const desc = part?.Description || info.getValue() || '—';
-          const lifecycle = part?.LifecycleStatus || 'Active';
+          const lifecycle = part ? part.LifecycleStatus || 'Active' : null;
 
           return (
             <div className="space-y-1 max-w-[260px]">
@@ -323,6 +325,7 @@ export function BomGrid() {
                 {desc}
               </p>
               <div className="flex items-center gap-2 text-[10px]">
+                {lifecycle && (
                 <span
                   className={`px-1.5 py-0.5 rounded font-medium ${
                     lifecycle === 'Active'
@@ -332,6 +335,7 @@ export function BomGrid() {
                 >
                   {lifecycle}
                 </span>
+                )}
 
                 {part?.DataSheetUrl && (
                   <a
@@ -364,7 +368,8 @@ export function BomGrid() {
                   min={1}
                   value={currentQty}
                   onChange={(e) => updateItemQty(item.id, parseInt(e.target.value, 10) || 1)}
-                  className="w-18 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-mono text-center font-bold"
+                  aria-label={`Quantity for ${item.designator || item.rawPartNumber}`}
+                  className="no-spin tabular w-18 h-8 bg-slate-950 border border-slate-700 hover:border-slate-600 rounded-md px-2 text-xs text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 font-mono text-center font-semibold transition"
                 />
               </div>
 
@@ -412,7 +417,7 @@ export function BomGrid() {
                   {item.status === 'error'
                     ? isIdentifierError
                       ? 'Invalid identifier'
-                      : 'Check Settings (⚙️)'
+                      : 'Check Settings'
                     : 'Not matched'}
                 </p>
               </div>
@@ -451,7 +456,7 @@ export function BomGrid() {
 
           return (
             <div className="relative group cursor-help space-y-0.5">
-              <span className="font-mono text-xs font-bold text-white">
+              <span className={`font-mono text-xs font-bold ${unitPrice > 0 ? 'text-white' : 'text-slate-600'}`}>
                 {unitPrice > 0 ? formatCurrency(unitPrice, item.currency) : '—'}
               </span>
               {breaks.length > 1 && (
@@ -513,7 +518,7 @@ export function BomGrid() {
           const ext = info.getValue();
 
           return (
-            <div className="font-mono text-xs font-bold text-emerald-300">
+            <div className={`font-mono text-xs font-bold ${ext > 0 ? 'text-emerald-300' : 'text-slate-600'}`}>
               {ext > 0 ? formatCurrency(ext, item.currency) : '—'}
             </div>
           );
@@ -541,6 +546,7 @@ export function BomGrid() {
                 disabled={isResolving || resolvingItemId === item.id}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-50 transition"
                 title={`Query live ${label} stock for this part`}
+                aria-label={`Query live ${label} stock for this part`}
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -552,6 +558,7 @@ export function BomGrid() {
                 onClick={() => setSelectedForReplace(item)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition"
                 title="Search alternate / replacement part"
+                aria-label="Search alternate / replacement part"
               >
                 <ArrowLeftRight className="w-3.5 h-3.5" />
               </button>
@@ -559,6 +566,7 @@ export function BomGrid() {
                 onClick={() => deleteItem(item.id)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
                 title="Delete line item"
+                aria-label="Delete line item"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -587,7 +595,7 @@ export function BomGrid() {
   if (items.length === 0) return null;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden mb-12">
+    <div className="bg-slate-900/70 border border-slate-800 rounded-2xl shadow-xl shadow-black/20 overflow-hidden mb-12">
       {/* Alert banner when API key is rejected */}
       {items.some((i) => /identifier|rejected|authoriz|client id|secret/i.test(i.errorMessage || '')) && !isResolving && (
         <div className="bg-gradient-to-r from-rose-950/90 via-red-950/70 to-slate-900 border-b border-rose-500/40 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
@@ -620,74 +628,76 @@ export function BomGrid() {
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950 shrink-0 transition"
           >
             <Key className="w-3.5 h-3.5 text-white" />
-            <span>Open Settings (⚙️)</span>
+            <span>Open Settings</span>
           </button>
         </div>
       )}
 
       {/* Banner when parts need resolution */}
       {hasUnresolved && !isResolving && (
-        <div className="bg-gradient-to-r from-blue-950/90 via-indigo-950/70 to-slate-900 border-b border-blue-500/30 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="bg-blue-500/[0.07] border-b border-blue-500/20 p-3.5 px-4 sm:px-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-1.5 rounded-lg bg-blue-500/20 text-cyan-400">
               <Sparkles className="w-4 h-4 text-cyan-300" />
             </div>
             <div>
               <p className="text-xs font-semibold text-white">
-                BOM components waiting for live {label} query
+                {items.filter((i) => !i.matchedPart || ['unresolved', 'pending', 'error'].includes(i.status)).length} of{' '}
+                {items.length} lines not looked up on {label} yet
               </p>
               <p className="text-[11px] text-slate-300">
-                Live inventory, volume pricing, and lead times have not been fetched yet.
+                Fetch live stock, volume pricing and lead times for every line.
               </p>
             </div>
           </div>
           <button
             onClick={() => resolveAllItems(effectiveSearchKey)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950 shrink-0 transition"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-950 shrink-0 transition"
           >
             <RefreshCw className="w-3.5 h-3.5 text-white" />
-            <span>⚡ Resolve with {label} API</span>
+            <span>Look up on {label}</span>
           </button>
         </div>
       )}
 
       {/* Table Action Bar */}
-      <div className="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/60 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+      <div className="p-3 sm:p-4 border-b border-slate-800 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
         {/* Search & Filter */}
         <div className="flex flex-wrap items-center gap-3 flex-1">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <input
               type="text"
               value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="Filter part #, designator, or manufacturer..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 pl-8 font-mono"
+              placeholder="Filter by part, designator or maker"
+              aria-label="Filter lines"
+              className="w-full h-8 bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 pl-8"
             />
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
           </div>
 
           {/* Status filter pill buttons */}
-          <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
+          <div role="group" aria-label="Filter by status" className="flex items-center gap-0.5 bg-slate-950/60 p-0.5 rounded-lg border border-slate-800 text-xs">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`px-2.5 py-1 rounded font-medium transition ${
-                statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`h-7 px-2.5 rounded-md font-medium transition ${
+                statusFilter === 'all' ? 'bg-slate-800 text-white ring-1 ring-white/10' : 'text-slate-400 hover:text-white'
               }`}
             >
               All ({items.length})
             </button>
             <button
               onClick={() => setStatusFilter('matched')}
-              className={`px-2.5 py-1 rounded font-medium transition ${
-                statusFilter === 'matched' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`h-7 px-2.5 rounded-md font-medium transition ${
+                statusFilter === 'matched' ? 'bg-slate-800 text-white ring-1 ring-white/10' : 'text-slate-400 hover:text-white'
               }`}
             >
               Matched
             </button>
             <button
               onClick={() => setStatusFilter('attention')}
-              className={`px-2.5 py-1 rounded font-medium transition ${
-                statusFilter === 'attention' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+              className={`h-7 px-2.5 rounded-md font-medium transition ${
+                statusFilter === 'attention' ? 'bg-slate-800 text-white ring-1 ring-white/10' : 'text-slate-400 hover:text-white'
               }`}
             >
               Needs Review
@@ -696,12 +706,13 @@ export function BomGrid() {
         </div>
 
         {/* Global BOM Actions */}
-        <div className="flex flex-wrap items-center gap-2.5 self-end md:self-center">
-          {/* Refresh / Resolve Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Refresh / Resolve Button (the banner above carries it while lines are unresolved) */}
+          {(!hasUnresolved || isResolving) && (
           <button
             onClick={() => resolveAllItems(effectiveSearchKey)}
             disabled={isResolving}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition ${
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium shadow-sm transition ${
               hasUnresolved
                 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950 font-bold'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
@@ -714,12 +725,13 @@ export function BomGrid() {
             />
             <span>
               {isResolving
-                ? 'Resolving...'
+                ? 'Resolving…'
                 : hasUnresolved
-                ? '⚡ Resolve Live Inventory'
-                : 'Re-check Inventory'}
+                ? 'Resolve live inventory'
+                : 'Re-check inventory'}
             </span>
           </button>
+          )}
 
           {/* Enriched Export Dropdown */}
           <ExportDropdown />
@@ -728,14 +740,14 @@ export function BomGrid() {
           <button
             onClick={handleExportToCart}
             disabled={isPushingCart || isResolving}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold shadow-md shadow-emerald-950 transition"
+            className="inline-flex items-center gap-2 h-8 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-md shadow-emerald-950 transition"
           >
             {isPushingCart ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : supplier === 'digikey' ? (
-              <Copy className="w-4 h-4" />
+              <Copy className="w-3.5 h-3.5" />
             ) : (
-              <ShoppingCart className="w-4 h-4" />
+              <ShoppingCart className="w-3.5 h-3.5" />
             )}
             <span>{supplier === 'digikey' ? 'Copy DigiKey Cart List' : 'Export to Mouser Cart'}</span>
           </button>
@@ -747,7 +759,7 @@ export function BomGrid() {
                 clearBom();
               }
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold shadow-sm transition"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 text-xs font-medium transition"
             title="Clear all line items from the list"
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-400" />
@@ -806,9 +818,19 @@ export function BomGrid() {
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id} className="border-b border-slate-800 bg-slate-950/80 text-slate-400 uppercase tracking-wider text-[11px]">
+              <tr key={headerGroup.id} className="border-b border-slate-800 bg-slate-950/50 text-slate-500 uppercase tracking-wider text-[10px]">
                 {headerGroup.headers.map((header) => (
-                  <th key={header.id} className="py-3 px-4 font-semibold">
+                  <th
+                    key={header.id}
+                    className="py-2.5 px-4 font-semibold whitespace-nowrap"
+                    aria-sort={
+                      header.column.getIsSorted() === 'asc'
+                        ? 'ascending'
+                        : header.column.getIsSorted() === 'desc'
+                        ? 'descending'
+                        : undefined
+                    }
+                  >
                     {header.isPlaceholder ? null : (
                       <div
                         {...{
@@ -819,7 +841,13 @@ export function BomGrid() {
                         }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getCanSort() && <ArrowUpDown className="w-3 h-3 text-slate-600" />}
+                        {header.column.getIsSorted() === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-blue-400" />
+                        ) : header.column.getIsSorted() === 'desc' ? (
+                          <ArrowDown className="w-3 h-3 text-blue-400" />
+                        ) : header.column.getCanSort() ? (
+                          <ArrowUpDown className="w-3 h-3 text-slate-700" />
+                        ) : null}
                       </div>
                     )}
                   </th>
@@ -827,7 +855,7 @@ export function BomGrid() {
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-slate-800/60 text-slate-300">
+          <tbody className="divide-y divide-slate-800/60 text-slate-300 tabular">
             {table.getRowModel().rows.map((row) => (
               <tr key={row.id} className="hover:bg-slate-800/40 transition">
                 {row.getVisibleCells().map((cell) => (
@@ -837,6 +865,13 @@ export function BomGrid() {
                 ))}
               </tr>
             ))}
+            {table.getRowModel().rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length} className="py-10 text-center text-xs text-slate-500">
+                  No lines match this filter.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

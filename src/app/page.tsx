@@ -1,20 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import {
-  UploadCloud,
-  Search,
-  ShoppingCart,
-  ShieldCheck,
-  Zap,
-  TrendingDown,
-  Layers,
-  ChevronDown,
-  ChevronUp,
-  Plus,
-  Trash2,
-  Loader2,
-} from 'lucide-react';
+import { UploadCloud, ShoppingCart, Zap, TrendingDown, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { ApiKeyBanner } from '@/components/ApiKeyBanner';
 import { SummaryCards } from '@/components/SummaryCards';
@@ -33,7 +20,7 @@ import { SUPPLIER_LABELS } from '@/lib/supplier';
 import { ParsedRawFile } from '@/lib/mouser/types';
 
 export default function Home() {
-  const { supplier, items, setIsManualSearchOpen, clearBom, loadSavedBom, isLoaded } = useBomStore();
+  const { supplier, items, setIsManualSearchOpen, loadSavedBom, isLoaded } = useBomStore();
   const { loadFromStorage } = useSettingsStore();
   const { loadActiveSupplier } = useSupplierStore();
   const label = SUPPLIER_LABELS[supplier];
@@ -61,61 +48,52 @@ export default function Home() {
       <Navbar />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* API Key Notice Banner */}
         <ApiKeyBanner />
 
-        {/* Mouser / DigiKey BOM selector */}
-        <SupplierSwitcher />
-
-        {/* When items exist in the BOM */}
-        {items.length > 0 ? (
-          <div className="space-y-6">
-            {/* Top Metric Strip */}
-            <SummaryCards />
-
-            {/* Ingestion & Tools Accordion Bar */}
-            <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-3 px-4 shadow-sm">
-              <div className="flex flex-wrap items-center gap-2">
+        {/* Mouser / DigiKey BOM selector, with the list actions beside it once a BOM exists */}
+        <SupplierSwitcher
+          actions={
+            items.length > 0 && (
+              <>
                 <button
+                  type="button"
                   onClick={() => setShowUploadAccordion(!showUploadAccordion)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
+                  aria-expanded={showUploadAccordion}
+                  className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border transition ${
+                    showUploadAccordion
+                      ? 'bg-slate-800 text-white border-slate-600'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700/80'
+                  }`}
                 >
-                  <UploadCloud className="w-3.5 h-3.5 text-blue-400" />
-                  <span>{showUploadAccordion ? 'Hide File Ingestion' : 'Upload Another BOM / Append'}</span>
+                  <UploadCloud className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Import more</span>
                   {showUploadAccordion ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setIsManualSearchOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-200 border border-slate-700/80 transition"
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Add Line Item</span>
+                  <span>Add line</span>
                 </button>
+              </>
+            )
+          }
+        />
 
-                <button
-                  onClick={() => {
-                    if (window.confirm('Are you sure you want to clear all BOM items? This will reset your current working list.')) {
-                      clearBom();
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 border border-rose-500/30 text-xs font-semibold transition"
-                  title="Clear all line items from the list"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Clear List</span>
-                </button>
-              </div>
-
-              <div className="text-xs text-slate-400 hidden sm:block">
-                Showing <strong className="text-white">{items.length}</strong> components
-              </div>
-            </div>
+        {/* When items exist in the BOM */}
+        {items.length > 0 ? (
+          <div>
+            {/* Top Metric Strip */}
+            <SummaryCards />
 
             {/* Collapsible Upload Zone */}
             {showUploadAccordion && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="mb-5 animate-in fade-in slide-in-from-top-2 duration-200">
                 <FileUploadZone onParsedFile={handleParsedFile} />
               </div>
             )}
@@ -125,76 +103,64 @@ export default function Home() {
           </div>
         ) : (
           /* Empty State: Initial Ingestion Flow */
-          <div className="space-y-8">
-            <div className="text-center max-w-2xl mx-auto space-y-3">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                Bill of Materials (BOM) &amp; {label} Cart Studio
+          <div className="space-y-8 sm:space-y-10">
+            <div className="text-center max-w-2xl mx-auto space-y-3 pt-2 sm:pt-6">
+              <h1 className="text-2xl sm:text-4xl font-semibold text-white tracking-tight text-balance">
+                Turn a parts list into a {label} cart
               </h1>
-              <p className="text-sm text-slate-400">
-                Ingest component spreadsheets or tube amp CAD exports, query {label} in real-time for live stock and volume price tiers, and move the result into a {label} shopping cart.
+              <p className="text-sm sm:text-base text-slate-400 leading-relaxed text-pretty">
+                Import a spreadsheet or a tube amp CAD export, check live {label} stock and volume pricing, then send
+                the matched parts to a {label} cart.
               </p>
-              <div className="flex items-center justify-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsManualSearchOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950 transition"
-                  title="Add an individual line item manually"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Line</span>
-                </button>
-              </div>
             </div>
 
             {/* Primary Dropzone */}
             <FileUploadZone onParsedFile={handleParsedFile} />
 
             {/* Feature Highlights Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
-                  <Zap className="w-5 h-5" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+              {[
+                {
+                  icon: <Zap className="w-4 h-4" />,
+                  tint: 'text-blue-400 bg-blue-500/10',
+                  title: 'Live Mouser & DigiKey search',
+                  body: 'Look up parts by manufacturer part number, distributor part number or keywords, with rate limiting and retries built in. Each supplier keeps its own BOM.',
+                },
+                {
+                  icon: <TrendingDown className="w-4 h-4" />,
+                  tint: 'text-emerald-400 bg-emerald-500/10',
+                  title: 'Volume price breaks',
+                  body: 'Change a quantity and the unit price follows the price tiers, with checks for minimum order quantities and reel multiples.',
+                },
+                {
+                  icon: <ShoppingCart className="w-4 h-4" />,
+                  tint: 'text-violet-400 bg-violet-500/10',
+                  title: 'Cart export',
+                  body: 'Send matched Mouser parts straight to a Mouser cart with a checkout link, or copy a quick-add list for the DigiKey cart.',
+                },
+              ].map((f) => (
+                <div key={f.title} className="flex gap-3.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${f.tint}`}>{f.icon}</div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-white">{f.title}</h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">{f.body}</p>
+                  </div>
                 </div>
-                <h3 className="text-sm font-semibold text-white">Live Mouser &amp; DigiKey Search</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Queries the Mouser and DigiKey APIs by Manufacturer Part Number, distributor part number, or component keywords, with rate-limit throttling and backoff. Each supplier keeps its own BOM.
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
-                  <TrendingDown className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-semibold text-white">Dynamic Volume Price Breaks</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Inline quantity changes instantly recalculate unit prices across manufacturer price tiers, checking Minimum Order Quantities (MOQ) and reel packaging multiples.
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 space-y-2.5">
-                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
-                  <ShoppingCart className="w-5 h-5" />
-                </div>
-                <h3 className="text-sm font-semibold text-white">Cart Export</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Pushes matched Mouser parts straight into a Mouser cart with a checkout link, or copies a DigiKey quick-add list for the DigiKey cart.
-                </p>
-              </div>
+              ))}
             </div>
           </div>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>BOM Studio for Mouser &amp; DigiKey • Full-Stack Web Application</p>
-          <div className="zx-spectrum-badge whitespace-nowrap flex-nowrap shrink-0">
+      <footer className="border-t border-slate-800/80 py-5 text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p>BOM Studio for Mouser &amp; DigiKey</p>
+          <div className="zx-spectrum-badge">
             <span className="zx-rainbow-stripe" aria-hidden="true" />
-            <span className="zx-spectrum-text whitespace-nowrap">Designed by Andrey Dumchin - 4X5VA</span>
+            <span className="zx-spectrum-text">Designed by Andrey Dumchin - 4X5VA</span>
             <span className="zx-rainbow-stripe" aria-hidden="true" />
           </div>
-          <p className="font-mono text-[11px]">Next.js • TypeScript • Tailwind CSS • TanStack Table</p>
         </div>
       </footer>
 
