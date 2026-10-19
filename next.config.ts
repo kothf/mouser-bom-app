@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
+import packageJson from "./package.json";
 
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
 
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath } : {}),
   output: 'standalone',
+  // Shown next to the app name; comes from package.json so it matches the release.
+  env: { NEXT_PUBLIC_APP_VERSION: packageJson.version },
   async headers() {
     return [
       {

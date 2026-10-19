@@ -37,7 +37,14 @@ export function Navbar() {
               <Cpu className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0 leading-tight">
-              <span className="block font-semibold text-white tracking-tight text-[15px]">BOM Studio</span>
+              <span className="flex items-baseline gap-1.5">
+                <span className="font-semibold text-white tracking-tight text-[15px]">BOM Studio</span>
+                {process.env.NEXT_PUBLIC_APP_VERSION && (
+                  <span className="tabular font-mono text-[10px] text-slate-500" title="App version">
+                    v{process.env.NEXT_PUBLIC_APP_VERSION}
+                  </span>
+                )}
+              </span>
               <span className="hidden sm:block text-[11px] text-slate-500 truncate">
                 Parts search &amp; carts for Mouser and DigiKey
               </span>
