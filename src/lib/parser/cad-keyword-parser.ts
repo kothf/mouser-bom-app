@@ -25,7 +25,15 @@ export interface CadCategoryRule {
   prefixes: string[];
 }
 
-export type CadColumn = 'reference' | 'type' | 'value' | 'voltage' | 'power' | 'quantity' | 'description';
+export type CadColumn =
+  | 'reference'
+  | 'type'
+  | 'value'
+  | 'rating'
+  | 'voltage'
+  | 'power'
+  | 'quantity'
+  | 'description';
 
 export interface CadKeywordConfig {
   categories: CadCategoryRule[];
@@ -57,7 +65,17 @@ export interface CadParseResult {
   headerDetected: boolean;
 }
 
-export const CAD_COLUMNS: CadColumn[] = ['reference', 'type', 'value', 'voltage', 'power', 'quantity', 'description'];
+// 'rating' comes before 'voltage' so a "Rating" header maps to it even with older saved rules.
+export const CAD_COLUMNS: CadColumn[] = [
+  'reference',
+  'type',
+  'value',
+  'rating',
+  'voltage',
+  'power',
+  'quantity',
+  'description',
+];
 
 export const DEFAULT_CAD_CATEGORIES: CadCategoryRule[] = [
   { name: 'Capacitor', keywords: ['cap', 'caps', 'capacitor', 'condenser', 'elko', 'elco'], prefixes: ['C'] },
@@ -78,7 +96,8 @@ export const DEFAULT_CAD_COLUMNS: Record<CadColumn, string[]> = {
   reference: ['ref', 'refdes', 'reference', 'designator', 'designators', 'name', 'part ref', 'id'],
   type: ['type', 'kind', 'category', 'component', 'part', 'part type'],
   value: ['value', 'val'],
-  voltage: ['voltage', 'volt', 'volts', 'rating', 'v rating'],
+  rating: ['rating', 'ratings', 'data', 'rating/data', 'rating data', 'spec', 'specs'],
+  voltage: ['voltage', 'volt', 'volts', 'v rating'],
   power: ['power', 'wattage', 'watts', 'watt'],
   quantity: ['qty', 'quantity', 'count', 'pcs', 'amount'],
   description: ['description', 'desc', 'notes', 'note', 'comment', 'comments'],
@@ -510,6 +529,28 @@ function extractFromText(text: string, config: CadKeywordConfig, prefixes: strin
   }
 }
 
+function applyRatingCell(
+  ratingCell: string,
+  category: CadCategoryRule,
+  config: CadKeywordConfig,
+  prefixes: string[],
+  into: Extracted
+): void {
+  const rating: Extracted = { category, designators: [], modifiers: [], freeWords: [] };
+  extractFromText(ratingCell, config, prefixes, rating);
+  // A bare number is volts for a capacitor and watts for a resistor.
+  if (/^\d+(?:[.,]\d+)?$/.test(ratingCell)) {
+    if (/capac/i.test(category.name)) rating.voltage = normalizeVoltage(`${ratingCell}V`) || undefined;
+    else rating.power = normalizePower(`${ratingCell}W`) || undefined;
+  }
+  into.voltage = into.voltage || rating.voltage;
+  into.power = into.power || rating.power;
+  into.tolerance = into.tolerance || rating.tolerance;
+  for (const m of rating.modifiers) {
+    if (!into.modifiers.includes(m)) into.modifiers.push(m);
+  }
+}
+
 function buildQuery(category: string, valueParts: string[], modifiers: string[]): string {
   return [...valueParts, ...modifiers, category].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
@@ -542,6 +583,7 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
   for (let i = startIndex; i < content.length; i++) {
     const { lineNumber, text: lineText } = content[i];
     const extracted: Extracted = { designators: [], modifiers: [], freeWords: [] };
+    let ratingCell = '';
 
     if (headerMap) {
       const cells = delimiter ? splitDelimited(lineText, delimiter) : lineText.split(/\s+/);
@@ -571,6 +613,9 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
       if (powerCell) {
         extracted.power = normalizePower(powerCell.replace(/\s+/g, '')) || normalizePower(`${powerCell}W`) || undefined;
       }
+
+      // Applied once the category is known; only capacitors and resistors use it.
+      ratingCell = cell('rating').trim();
 
       // Value, type and description cells go through free-text extraction.
       const valueCell = cell('value');
@@ -606,6 +651,11 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
     if (!category) {
       unmatched.push({ lineNumber, text: lineText, reason: 'No category keyword or designator prefix found' });
       continue;
+    }
+
+    // Capacitor and resistor ratings (450V, 1W, 5%, film...) come from the Rating/Data column.
+    if (ratingCell && /capac|resist|pot/i.test(category.name)) {
+      applyRatingCell(ratingCell, category, config, prefixes, extracted);
     }
 
     // Bare numbers in a resistor line are ohms (e.g. "R5 Res 470").
