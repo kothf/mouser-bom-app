@@ -13,6 +13,8 @@ on:
       - '.github/workflows/release.yml'
       - 'scripts/package-release.mjs'
       - 'release/**'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
   workflow_dispatch:
     inputs:
       tag:
@@ -21,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   prepare:
@@ -103,8 +106,35 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
 
+  # Server image for aerocat.tech (served under /bom), pushed to GHCR on release
+  docker:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: needs.prepare.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: NEXT_PUBLIC_BASE_PATH=/bom
+          push: ${{ needs.prepare.outputs.publish == 'true' }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ needs.prepare.outputs.tag }}
+            ${{ steps.image.outputs.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, docker]
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:

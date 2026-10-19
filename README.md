@@ -9,6 +9,16 @@ A responsive, production-ready Full-Stack Web Application for electronic enginee
 Ready-to-run builds for Windows, macOS and Linux are attached to every [GitHub release](../../releases/latest).
 Install [Node.js 20+](https://nodejs.org/), unpack the archive for your system, and run `start.cmd` (Windows) or `./start.sh` (Linux/macOS). The app opens at http://localhost:3000.
 
+### Server (aerocat.tech/bom)
+
+Each release also publishes a Docker image, `ghcr.io/kothf/mouser-bom-app:<version>` and `:latest`, built for the `/bom` path. On the server, next to `docker-compose.yml`:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Optional server-wide DigiKey credentials go in a `.env` file beside `docker-compose.yml` (`DIGIKEY_CLIENT_ID=...`, `DIGIKEY_CLIENT_SECRET=...`). Saved BOMs live in the `bom-data` volume. If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
+
 Releases are built by `.github/workflows/release.yml`: every merge to `main` whose `package.json` version has no release yet publishes `v<version>` automatically (pushing a `v*` tag or running the workflow manually works too). Bump the version to ship a new release.
 
 ---
