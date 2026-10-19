@@ -145,3 +145,32 @@ describe('rule text round-trip', () => {
     expect(buildCadConfig(undefined, columnsToText(DEFAULT_CAD_COLUMNS)).columns).toEqual(DEFAULT_CAD_COLUMNS);
   });
 });
+
+describe('Rating/Data column', () => {
+  it('takes capacitor and resistor ratings from the Rating/Data column', () => {
+    const text = [
+      'Ref,Type,Value,Rating/Data',
+      'C1,Cap,22uF,450V electrolytic',
+      'C2,Cap,0.022uF,630',
+      'R1,Res,100k,1W 5% metal film',
+      'R2,Res,1k5,2',
+      'V1,Tube,12AX7,6.3V heater',
+    ].join('\n');
+
+    const { lines, headerDetected, unmatched } = parseCadBom(text);
+    expect(headerDetected).toBe(true);
+    expect(unmatched).toEqual([]);
+    expect(lines.map((l) => l.query)).toEqual([
+      '22uF 450V electrolytic Capacitor',
+      '0.022uF 630V Capacitor',
+      '100k Ohm 1W 5% metal film Resistor',
+      '1.5k Ohm 2W Resistor',
+      '12AX7 Vacuum Tube',
+    ]);
+  });
+
+  it('maps a plain Rating header to the rating column', () => {
+    const { lines } = parseCadBom('Ref;Type;Value;Rating\nR1;Res;220k;0.5W');
+    expect(lines[0]).toMatchObject({ value: '220k Ohm', power: '0.5W' });
+  });
+});
