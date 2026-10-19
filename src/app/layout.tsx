@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Mouser BOM Studio | Real-time Pricing, Stock & Shopping Cart Automation',
+  title: 'BOM Studio | Mouser & DigiKey parts search, pricing and carts',
   description:
-    'Production-grade Bill of Materials (BOM) management web application integrated with Mouser Electronics Search API & Cart API.',
+    'Import a Bill of Materials, look up live stock and volume pricing on Mouser and DigiKey, and send the result to a shopping cart.',
 };
 
 export default function RootLayout({
@@ -36,7 +36,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 selection:bg-blue-600 selection:text-white">
+      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 selection:bg-blue-500/40 selection:text-white">
         {children}
       </body>
     </html>

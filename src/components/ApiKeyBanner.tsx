@@ -39,36 +39,30 @@ export function ApiKeyBanner() {
   const isDigiKey = supplier === 'digikey';
 
   return (
-    <div className="bg-gradient-to-r from-blue-900/40 via-slate-900 to-indigo-950/40 border border-blue-500/30 rounded-xl p-4 mb-6 shadow-lg backdrop-blur-sm">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 mt-0.5">
-            <AlertCircle className="w-5 h-5 text-blue-400" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-white text-sm">
-                {isDigiKey ? 'DigiKey API Credentials Not Configured' : 'Mouser Search API Key Not Configured'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              {isDigiKey
-                ? 'To query live DigiKey inventory and pricing, add the Client ID and Client Secret of your own DigiKey API app (Product Information v4) in Settings.'
-                : 'To query live Mouser inventory, retrieve real-time volume price breaks, and push shopping carts directly to Mouser.com, please configure your Mouser Search API Key.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition"
-          >
-            <Key className="w-3.5 h-3.5" />
-            {isDigiKey ? 'Configure DigiKey' : 'Configure API Key'}
-          </button>
-        </div>
+    <div
+      role="status"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 mb-5"
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+        <p className="text-xs text-slate-300 leading-relaxed">
+          <span className="font-semibold text-amber-200">
+            {isDigiKey ? 'DigiKey API credentials are not set.' : 'Mouser Search API key is not set.'}
+          </span>{' '}
+          {isDigiKey
+            ? 'Add the Client ID and Client Secret of your DigiKey API app (Product Information v4) to get live stock and pricing.'
+            : 'Add your Mouser Search API key to get live stock, volume price breaks and Mouser carts.'}
+        </p>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setIsSettingsOpen(true)}
+        className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-semibold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 shrink-0 transition self-start sm:self-auto"
+      >
+        <Key className="w-3.5 h-3.5" />
+        {isDigiKey ? 'Add DigiKey credentials' : 'Add API key'}
+      </button>
     </div>
   );
 }
