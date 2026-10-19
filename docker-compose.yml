@@ -1,5 +1,10 @@
 services:
   mouser-bom:
+    # Prebuilt image published by the Release workflow (served under /bom).
+    # Update the server with: docker compose pull && docker compose up -d
+    image: ghcr.io/kothf/mouser-bom-app:latest
+    pull_policy: always
+    # Fallback: `docker compose up -d --build` builds locally instead.
     build:
       context: .
       dockerfile: Dockerfile
@@ -15,9 +20,15 @@ services:
       # Optional server-side DigiKey credentials (read from the host env / .env, never committed)
       - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID:-}
       - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET:-}
+    volumes:
+      # Keeps saved Mouser and DigiKey BOMs across container updates
+      - bom-data:/app/data
     networks:
       - proxy
     # No ports exposed to host. Maximum security via internal Docker network only.
+
+volumes:
+  bom-data:
 
 networks:
   proxy:
