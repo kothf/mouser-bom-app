@@ -140,6 +140,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          # Only the packaged builds; the Docker job also uploads a build record.
+          pattern: bom-studio-*
           path: assets
           merge-multiple: true
       - name: Create or update the release
