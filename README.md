@@ -9,7 +9,7 @@ A responsive, production-ready Full-Stack Web Application for electronic enginee
 Ready-to-run builds for Windows, macOS and Linux are attached to every [GitHub release](../../releases/latest).
 Install [Node.js 20+](https://nodejs.org/), unpack the archive for your system, and run `start.cmd` (Windows) or `./start.sh` (Linux/macOS). The app opens at http://localhost:3000.
 
-Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed (or when the workflow is run manually).
+Releases are built by `.github/workflows/release.yml`: every merge to `main` whose `package.json` version has no release yet publishes `v<version>` automatically (pushing a `v*` tag or running the workflow manually works too). Bump the version to ship a new release.
 
 ---
 
