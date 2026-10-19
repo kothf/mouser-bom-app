@@ -1,8 +1,9 @@
-import { create } from 'zustand';
+import { createStore, useStore } from 'zustand';
 import { BOMItem, BOMSummary, MouserPart, MouserCartResponse } from '@/lib/mouser/types';
 import { calculateTierPrice, parseStockQuantity, pickBestMatchedPart } from '@/lib/mouser/client';
-import { apiPath } from '@/lib/api-path';
-import { useSettingsStore } from './settings-store';
+import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
+import { useSupplierStore } from './supplier-store';
 
 export interface ResolveProgress {
   current: number;
@@ -11,6 +12,7 @@ export interface ResolveProgress {
 }
 
 export interface BomState {
+  supplier: Supplier;
   items: BOMItem[];
   isResolving: boolean;
   isLoaded: boolean;
@@ -39,71 +41,63 @@ export interface BomState {
   getSummary: () => BOMSummary;
 }
 
-const STORAGE_KEY_ITEMS = 'mouser_bom_items_v1';
-const STORAGE_KEY_CART = 'mouser_bom_cart_v1';
+// Mouser keeps its original keys so existing saved BOMs still load.
+const STORAGE_KEYS: Record<Supplier, { items: string; cart: string }> = {
+  mouser: { items: 'mouser_bom_items_v1', cart: 'mouser_bom_cart_v1' },
+  digikey: { items: 'digikey_bom_items_v1', cart: 'digikey_bom_cart_v1' },
+};
 
-let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Pick the best part for a keyword query (CAD import): favour parts in stock
+ * for the requested quantity whose description mentions the query's values.
+ */
+export function pickBestKeywordPart(parts: MouserPart[], query: string, requestedQty: number): MouserPart | null {
+  if (!parts || parts.length === 0) return null;
+  const tokens = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/ohm$/, ''))
+    .filter((t) => t.length > 1 && /\d/.test(t));
 
-function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | null) {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items));
-      if (activeCart) {
-        localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(activeCart));
-      } else {
-        localStorage.removeItem(STORAGE_KEY_CART);
-      }
-    } catch (err) {
-      console.warn('Failed to save BOM to browser localStorage:', err);
-    }
-  }
-
-  // Sync to local server file storage in background
-  if (syncDebounceTimer) {
-    clearTimeout(syncDebounceTimer);
-  }
-  syncDebounceTimer = setTimeout(() => {
-    fetch(apiPath('/api/mouser/bom/storage'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, activeCart }),
-    }).catch((err) => {
-      console.warn('Failed to persist BOM to server storage:', err);
+  const score = (p: MouserPart): number => {
+    let s = 0;
+    if (!p.MouserPartNumber || p.MouserPartNumber.toLowerCase() === 'n/a') s -= 1000;
+    const stock = parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
+    if (stock >= requestedQty) s += 400;
+    else if (stock > 0) s += 150;
+    if (p.PriceBreaks && p.PriceBreaks.length > 0) s += 100;
+    const moq = parseInt(p.Min || '1', 10) || 1;
+    if (moq <= requestedQty) s += 100;
+    const haystack = `${p.Description} ${p.ManufacturerPartNumber}`.toLowerCase().replace(/\s+/g, '');
+    tokens.forEach((t) => {
+      if (haystack.includes(t.replace(/\s+/g, ''))) s += 60;
     });
-  }, 350);
+    return s;
+  };
+
+  return [...parts].sort((a, b) => score(b) - score(a))[0] || parts[0];
 }
 
-function getEffectiveSearchKey(explicitKey?: string): string {
-  let effectiveKey = explicitKey?.trim();
-  if (!effectiveKey) {
-    try {
-      effectiveKey = useSettingsStore.getState().searchApiKey?.trim();
-    } catch {}
-  }
-  if (!effectiveKey && typeof window !== 'undefined') {
-    try {
-      const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
-      effectiveKey = stored.searchApiKey?.trim();
-    } catch {}
-  }
-  return effectiveKey || '';
-}
-
-async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Promise<BOMItem> {
+async function queryAndMatchSingleItem(
+  item: BOMItem,
+  supplier: Supplier,
+  headers: Record<string, string>
+): Promise<BOMItem> {
+  const label = SUPPLIER_LABELS[supplier];
+  const isKeyword = item.searchMode === 'keyword';
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-mouser-search-key': effectiveKey,
-    };
-
-    const res = await fetch(apiPath('/api/mouser/search/partnumber'), {
+    const res = await fetch(supplierApiPath(supplier, isKeyword ? 'search/keyword' : 'search/partnumber'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        partNumber: item.rawPartNumber,
-        description: item.notes,
-        designator: item.designator,
-      }),
+      body: JSON.stringify(
+        isKeyword
+          ? { keyword: item.rawPartNumber, records: 25 }
+          : {
+              partNumber: item.rawPartNumber,
+              description: item.notes,
+              designator: item.designator,
+            }
+      ),
     });
 
     if (!res.ok) {
@@ -114,7 +108,10 @@ async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Pro
     const parts: MouserPart[] = data.parts || [];
 
     if (parts.length > 0 && !data.error) {
-      const matchedPart = pickBestMatchedPart(parts, item.rawPartNumber) || parts[0];
+      const matchedPart =
+        (isKeyword
+          ? pickBestKeywordPart(parts, item.rawPartNumber, item.requestedQty)
+          : pickBestMatchedPart(parts, item.rawPartNumber)) || parts[0];
       const stock = parseStockQuantity(
         matchedPart.Availability,
         matchedPart.AvailabilityInStock,
@@ -148,8 +145,12 @@ async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Pro
         errorMessage: undefined,
       };
     } else {
-      const errMsg = data.error || `Part "${item.rawPartNumber}" not found in Mouser catalog`;
-      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected/i.test(errMsg);
+      const errMsg =
+        data.error ||
+        (isKeyword
+          ? `No ${label} results for "${item.rawPartNumber}"`
+          : `Part "${item.rawPartNumber}" not found in ${label} catalog`);
+      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected|authoriz|client id|secret/i.test(errMsg);
 
       return {
         ...item,
@@ -176,106 +177,102 @@ async function queryAndMatchSingleItem(item: BOMItem, effectiveKey: string): Pro
   }
 }
 
-export const useBomStore = create<BomState>((set, get) => ({
-  items: [],
-  isResolving: false,
-  isLoaded: false,
-  resolveProgress: null,
-  activeCart: null,
-  selectedItemForReplace: null,
-  isCartModalOpen: false,
-  isManualSearchOpen: false,
-  isReplaceModalOpen: false,
+/**
+ * Resolve search credentials before a lookup. Mouser needs a key in the
+ * browser; DigiKey may also use credentials configured on the server, so a
+ * missing browser credential does not block it.
+ */
+function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Record<string, string> | null {
+  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitKey);
+  if (supplier === 'mouser' && !hasCredentials) {
+    useSettingsStore.getState().setIsSettingsOpen(true);
+    alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
+    return null;
+  }
+  return headers;
+}
 
-  setItems: (items: BOMItem[]) => {
-    set({ items });
-    persistToStorage(items, get().activeCart);
-  },
+function createBomStore(supplier: Supplier) {
+  const storageKeys = STORAGE_KEYS[supplier];
+  const storagePath = supplierApiPath(supplier, 'bom/storage');
+  let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  addItem: (partialItem: Partial<BOMItem>) => {
-    const current = get().items;
-    const requestedQty = Math.max(1, partialItem.requestedQty || 1);
-    const matchedPart = partialItem.matchedPart;
-
-    let unitPrice = 0;
-    let currency = 'USD';
-    let availableStock = 0;
-    let moq = 1;
-    let mult = 1;
-
-    if (matchedPart) {
-      const tier = calculateTierPrice(matchedPart.PriceBreaks, requestedQty);
-      unitPrice = tier.unitPrice;
-      currency = tier.currency;
-      availableStock = parseStockQuantity(
-        matchedPart.Availability,
-        matchedPart.AvailabilityInStock,
-        matchedPart.FactoryStock
-      );
-      moq = parseInt(matchedPart.Min || '1', 10) || 1;
-      mult = parseInt(matchedPart.Mult || '1', 10) || 1;
-    }
-
-    const meetsMoq = requestedQty >= moq;
-    const meetsMultiple = requestedQty % mult === 0;
-
-    let status = partialItem.status || 'pending';
-    if (matchedPart) {
-      if (availableStock < requestedQty) {
-        status = 'low_stock';
-      } else if (!meetsMoq || !meetsMultiple) {
-        status = 'moq_warning';
-      } else {
-        status = 'matched';
+  function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | null) {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(storageKeys.items, JSON.stringify(items));
+        if (activeCart) {
+          localStorage.setItem(storageKeys.cart, JSON.stringify(activeCart));
+        } else {
+          localStorage.removeItem(storageKeys.cart);
+        }
+      } catch (err) {
+        console.warn('Failed to save BOM to browser localStorage:', err);
       }
     }
 
-    const newItem: BOMItem = {
-      id: `bom-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      lineNumber: current.length + 1,
-      designator: partialItem.designator || `Line ${current.length + 1}`,
-      rawPartNumber: partialItem.rawPartNumber || '',
-      requestedQty,
-      notes: partialItem.notes || '',
-      status,
-      matchedPart,
-      unitPrice,
-      extendedPrice: unitPrice * requestedQty,
-      currency,
-      availableStock,
-      moq,
-      orderMultiple: mult,
-      meetsMoq,
-      meetsMultiple,
-      isCustomPart: Boolean(partialItem.isCustomPart),
-    };
+    // Sync to local server file storage in background
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+    }
+    syncDebounceTimer = setTimeout(() => {
+      fetch(storagePath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items, activeCart }),
+      }).catch((err) => {
+        console.warn('Failed to persist BOM to server storage:', err);
+      });
+    }, 350);
+  }
 
-    const updated = [...current, newItem];
-    set({ items: updated });
-    persistToStorage(updated, get().activeCart);
-  },
+  return createStore<BomState>((set, get) => ({
+    supplier,
+    items: [],
+    isResolving: false,
+    isLoaded: false,
+    resolveProgress: null,
+    activeCart: null,
+    selectedItemForReplace: null,
+    isCartModalOpen: false,
+    isManualSearchOpen: false,
+    isReplaceModalOpen: false,
 
-  updateItemQty: (id: string, newQty: number) => {
-    const safeQty = Math.max(1, Math.floor(newQty) || 1);
-    const current = get().items;
-    const updated = current.map((item) => {
-      if (item.id !== id) return item;
+    setItems: (items: BOMItem[]) => {
+      set({ items });
+      persistToStorage(items, get().activeCart);
+    },
 
-      let unitPrice = item.unitPrice;
-      let currency = item.currency;
+    addItem: (partialItem: Partial<BOMItem>) => {
+      const current = get().items;
+      const requestedQty = Math.max(1, partialItem.requestedQty || 1);
+      const matchedPart = partialItem.matchedPart;
 
-      if (item.matchedPart) {
-        const tier = calculateTierPrice(item.matchedPart.PriceBreaks, safeQty);
+      let unitPrice = 0;
+      let currency = 'USD';
+      let availableStock = 0;
+      let moq = 1;
+      let mult = 1;
+
+      if (matchedPart) {
+        const tier = calculateTierPrice(matchedPart.PriceBreaks, requestedQty);
         unitPrice = tier.unitPrice;
         currency = tier.currency;
+        availableStock = parseStockQuantity(
+          matchedPart.Availability,
+          matchedPart.AvailabilityInStock,
+          matchedPart.FactoryStock
+        );
+        moq = parseInt(matchedPart.Min || '1', 10) || 1;
+        mult = parseInt(matchedPart.Mult || '1', 10) || 1;
       }
 
-      const meetsMoq = safeQty >= item.moq;
-      const meetsMultiple = safeQty % item.orderMultiple === 0;
+      const meetsMoq = requestedQty >= moq;
+      const meetsMultiple = requestedQty % mult === 0;
 
-      let status = item.status;
-      if (item.matchedPart) {
-        if (item.availableStock < safeQty) {
+      let status = partialItem.status || 'pending';
+      if (matchedPart) {
+        if (availableStock < requestedQty) {
           status = 'low_stock';
         } else if (!meetsMoq || !meetsMultiple) {
           status = 'moq_warning';
@@ -284,267 +281,335 @@ export const useBomStore = create<BomState>((set, get) => ({
         }
       }
 
-      return {
-        ...item,
-        requestedQty: safeQty,
-        unitPrice,
-        extendedPrice: unitPrice * safeQty,
-        currency,
-        meetsMoq,
-        meetsMultiple,
+      const newItem: BOMItem = {
+        id: `bom-item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        lineNumber: current.length + 1,
+        designator: partialItem.designator || `Line ${current.length + 1}`,
+        rawPartNumber: partialItem.rawPartNumber || '',
+        requestedQty,
+        notes: partialItem.notes || '',
         status,
-      };
-    });
-
-    set({ items: updated });
-    persistToStorage(updated, get().activeCart);
-  },
-
-  deleteItem: (id: string) => {
-    const current = get().items;
-    const updated = current
-      .filter((i) => i.id !== id)
-      .map((item, idx) => ({ ...item, lineNumber: idx + 1 }));
-
-    set({ items: updated });
-    persistToStorage(updated, get().activeCart);
-  },
-
-  clearBom: () => {
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_KEY_ITEMS);
-        localStorage.removeItem(STORAGE_KEY_CART);
-      } catch {}
-    }
-
-    if (syncDebounceTimer) {
-      clearTimeout(syncDebounceTimer);
-      syncDebounceTimer = null;
-    }
-
-    fetch(apiPath('/api/mouser/bom/storage'), { method: 'DELETE' }).catch(() => {});
-    set({ items: [], activeCart: null, selectedItemForReplace: null, resolveProgress: null });
-  },
-
-  replaceItemPart: (id: string, newPart: MouserPart) => {
-    const current = get().items;
-    const updated = current.map((item) => {
-      if (item.id !== id) return item;
-
-      const qty = item.requestedQty;
-      const tier = calculateTierPrice(newPart.PriceBreaks, qty);
-      const stock = parseStockQuantity(
-        newPart.Availability,
-        newPart.AvailabilityInStock,
-        newPart.FactoryStock
-      );
-      const moq = parseInt(newPart.Min || '1', 10) || 1;
-      const mult = parseInt(newPart.Mult || '1', 10) || 1;
-
-      const meetsMoq = qty >= moq;
-      const meetsMultiple = qty % mult === 0;
-
-      let status: BOMItem['status'] = 'matched';
-      if (stock < qty) {
-        status = 'low_stock';
-      } else if (!meetsMoq || !meetsMultiple) {
-        status = 'moq_warning';
-      }
-
-      return {
-        ...item,
-        matchedPart: newPart,
-        rawPartNumber: newPart.ManufacturerPartNumber,
-        notes: newPart.Description,
-        unitPrice: tier.unitPrice,
-        extendedPrice: tier.unitPrice * qty,
-        currency: tier.currency,
-        availableStock: stock,
+        matchedPart,
+        unitPrice,
+        extendedPrice: unitPrice * requestedQty,
+        currency,
+        availableStock,
         moq,
         orderMultiple: mult,
         meetsMoq,
         meetsMultiple,
-        status,
-        errorMessage: undefined,
+        isCustomPart: Boolean(partialItem.isCustomPart),
       };
-    });
 
-    set({
-      items: updated,
-      isReplaceModalOpen: false,
-      selectedItemForReplace: null,
-    });
-    persistToStorage(updated, get().activeCart);
-  },
+      const updated = [...current, newItem];
+      set({ items: updated });
+      persistToStorage(updated, get().activeCart);
+    },
 
-  setSelectedForReplace: (item: BOMItem | null) => {
-    set({ selectedItemForReplace: item, isReplaceModalOpen: item !== null });
-  },
+    updateItemQty: (id: string, newQty: number) => {
+      const safeQty = Math.max(1, Math.floor(newQty) || 1);
+      const current = get().items;
+      const updated = current.map((item) => {
+        if (item.id !== id) return item;
 
-  setIsCartModalOpen: (open: boolean) => set({ isCartModalOpen: open }),
-  setIsManualSearchOpen: (open: boolean) => set({ isManualSearchOpen: open }),
-  setIsReplaceModalOpen: (open: boolean) => set({ isReplaceModalOpen: open }),
-  setActiveCart: (cart: MouserCartResponse | null) => {
-    set({ activeCart: cart });
-    persistToStorage(get().items, cart);
-  },
+        let unitPrice = item.unitPrice;
+        let currency = item.currency;
 
-  loadSavedBom: async () => {
-    let loadedItems: BOMItem[] | null = null;
-    let loadedCart: MouserCartResponse | null = null;
+        if (item.matchedPart) {
+          const tier = calculateTierPrice(item.matchedPart.PriceBreaks, safeQty);
+          unitPrice = tier.unitPrice;
+          currency = tier.currency;
+        }
 
-    // 1. Try browser localStorage first
-    if (typeof window !== 'undefined') {
-      try {
-        const localRaw = localStorage.getItem(STORAGE_KEY_ITEMS);
-        if (localRaw) {
-          const parsed = JSON.parse(localRaw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            loadedItems = parsed;
+        const meetsMoq = safeQty >= item.moq;
+        const meetsMultiple = safeQty % item.orderMultiple === 0;
+
+        let status = item.status;
+        if (item.matchedPart) {
+          if (item.availableStock < safeQty) {
+            status = 'low_stock';
+          } else if (!meetsMoq || !meetsMultiple) {
+            status = 'moq_warning';
+          } else {
+            status = 'matched';
           }
         }
-        const cartRaw = localStorage.getItem(STORAGE_KEY_CART);
-        if (cartRaw) {
-          loadedCart = JSON.parse(cartRaw);
-        }
-      } catch (err) {
-        console.warn('Could not read BOM from localStorage:', err);
-      }
-    }
 
-    if (loadedItems && loadedItems.length > 0) {
-      set({ items: loadedItems, activeCart: loadedCart, isLoaded: true });
-      return;
-    }
-
-    // 2. Fallback to server local storage file
-    try {
-      const res = await fetch(apiPath('/api/mouser/bom/storage'));
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.items) && data.items.length > 0) {
-          set({
-            items: data.items,
-            activeCart: data.activeCart || null,
-            isLoaded: true,
-          });
-
-          // Sync back to localStorage
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(data.items));
-              if (data.activeCart) {
-                localStorage.setItem(STORAGE_KEY_CART, JSON.stringify(data.activeCart));
-              }
-            } catch {}
-          }
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('Could not read BOM from server storage:', err);
-    }
-
-    set({ isLoaded: true });
-  },
-
-  resolveAllItems: async (explicitKey?: string) => {
-    const { items } = get();
-    if (items.length === 0) return;
-
-    const effectiveKey = getEffectiveSearchKey(explicitKey);
-
-    if (!effectiveKey) {
-      useSettingsStore.getState().setIsSettingsOpen(true);
-      alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
-      return;
-    }
-
-    set({
-      isResolving: true,
-      resolveProgress: { current: 0, total: items.length, currentPart: 'Starting...' },
-    });
-
-    const updatedItems = [...items];
-
-    for (let i = 0; i < updatedItems.length; i++) {
-      const item = updatedItems[i];
-      set({
-        resolveProgress: {
-          current: i + 1,
-          total: updatedItems.length,
-          currentPart: item.rawPartNumber,
-        },
+        return {
+          ...item,
+          requestedQty: safeQty,
+          unitPrice,
+          extendedPrice: unitPrice * safeQty,
+          currency,
+          meetsMoq,
+          meetsMultiple,
+          status,
+        };
       });
 
-      updatedItems[i] = await queryAndMatchSingleItem(item, effectiveKey);
+      set({ items: updated });
+      persistToStorage(updated, get().activeCart);
+    },
 
-      // Update state incrementally so user sees live row-by-row updates
-      set({ items: [...updatedItems] });
-    }
+    deleteItem: (id: string) => {
+      const current = get().items;
+      const updated = current
+        .filter((i) => i.id !== id)
+        .map((item, idx) => ({ ...item, lineNumber: idx + 1 }));
 
-    set({ isResolving: false, resolveProgress: null });
-    persistToStorage(updatedItems, get().activeCart);
-  },
+      set({ items: updated });
+      persistToStorage(updated, get().activeCart);
+    },
 
-  resolveSingleItem: async (id: string, explicitKey?: string) => {
-    const { items } = get();
-    const item = items.find((i) => i.id === id);
-    if (!item) return;
-
-    const effectiveKey = getEffectiveSearchKey(explicitKey);
-
-    if (!effectiveKey) {
-      useSettingsStore.getState().setIsSettingsOpen(true);
-      alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
-      return;
-    }
-
-    const updatedItem = await queryAndMatchSingleItem(item, effectiveKey);
-    const updatedItems = get().items.map((i) => (i.id === id ? updatedItem : i));
-    set({ items: updatedItems });
-    persistToStorage(updatedItems, get().activeCart);
-  },
-
-  getSummary: (): BOMSummary => {
-    const { items } = get();
-    let totalQuantity = 0;
-    let totalCost = 0;
-    let matchedCount = 0;
-    let lowStockCount = 0;
-    let unresolvedCount = 0;
-    let fulfillableItems = 0;
-
-    items.forEach((item) => {
-      totalQuantity += item.requestedQty;
-      totalCost += item.extendedPrice;
-
-      if (item.status === 'matched') {
-        matchedCount++;
-        fulfillableItems++;
-      } else if (item.status === 'low_stock') {
-        lowStockCount++;
-      } else if (item.status === 'moq_warning') {
-        matchedCount++;
-        if (item.availableStock >= item.requestedQty) fulfillableItems++;
-      } else if (item.status === 'unresolved' || item.status === 'error') {
-        unresolvedCount++;
+    clearBom: () => {
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem(storageKeys.items);
+          localStorage.removeItem(storageKeys.cart);
+        } catch {}
       }
-    });
 
-    const fulfillmentRate =
-      items.length > 0 ? Math.round((fulfillableItems / items.length) * 100) : 0;
+      if (syncDebounceTimer) {
+        clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = null;
+      }
 
-    return {
-      totalLineItems: items.length,
-      totalQuantity,
-      totalCost,
-      currency: items[0]?.currency || 'USD',
-      matchedCount,
-      lowStockCount,
-      unresolvedCount,
-      fulfillmentRate,
-    };
-  },
-}));
+      fetch(storagePath, { method: 'DELETE' }).catch(() => {});
+      set({ items: [], activeCart: null, selectedItemForReplace: null, resolveProgress: null });
+    },
+
+    replaceItemPart: (id: string, newPart: MouserPart) => {
+      const current = get().items;
+      const updated = current.map((item) => {
+        if (item.id !== id) return item;
+
+        const qty = item.requestedQty;
+        const tier = calculateTierPrice(newPart.PriceBreaks, qty);
+        const stock = parseStockQuantity(
+          newPart.Availability,
+          newPart.AvailabilityInStock,
+          newPart.FactoryStock
+        );
+        const moq = parseInt(newPart.Min || '1', 10) || 1;
+        const mult = parseInt(newPart.Mult || '1', 10) || 1;
+
+        const meetsMoq = qty >= moq;
+        const meetsMultiple = qty % mult === 0;
+
+        let status: BOMItem['status'] = 'matched';
+        if (stock < qty) {
+          status = 'low_stock';
+        } else if (!meetsMoq || !meetsMultiple) {
+          status = 'moq_warning';
+        }
+
+        return {
+          ...item,
+          matchedPart: newPart,
+          rawPartNumber: newPart.ManufacturerPartNumber,
+          // A chosen part is re-checked by its part number from now on.
+          searchMode: 'partnumber' as const,
+          notes: newPart.Description,
+          unitPrice: tier.unitPrice,
+          extendedPrice: tier.unitPrice * qty,
+          currency: tier.currency,
+          availableStock: stock,
+          moq,
+          orderMultiple: mult,
+          meetsMoq,
+          meetsMultiple,
+          status,
+          errorMessage: undefined,
+        };
+      });
+
+      set({
+        items: updated,
+        isReplaceModalOpen: false,
+        selectedItemForReplace: null,
+      });
+      persistToStorage(updated, get().activeCart);
+    },
+
+    setSelectedForReplace: (item: BOMItem | null) => {
+      set({ selectedItemForReplace: item, isReplaceModalOpen: item !== null });
+    },
+
+    setIsCartModalOpen: (open: boolean) => set({ isCartModalOpen: open }),
+    setIsManualSearchOpen: (open: boolean) => set({ isManualSearchOpen: open }),
+    setIsReplaceModalOpen: (open: boolean) => set({ isReplaceModalOpen: open }),
+    setActiveCart: (cart: MouserCartResponse | null) => {
+      set({ activeCart: cart });
+      persistToStorage(get().items, cart);
+    },
+
+    loadSavedBom: async () => {
+      let loadedItems: BOMItem[] | null = null;
+      let loadedCart: MouserCartResponse | null = null;
+
+      // 1. Try browser localStorage first
+      if (typeof window !== 'undefined') {
+        try {
+          const localRaw = localStorage.getItem(storageKeys.items);
+          if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              loadedItems = parsed;
+            }
+          }
+          const cartRaw = localStorage.getItem(storageKeys.cart);
+          if (cartRaw) {
+            loadedCart = JSON.parse(cartRaw);
+          }
+        } catch (err) {
+          console.warn('Could not read BOM from localStorage:', err);
+        }
+      }
+
+      if (loadedItems && loadedItems.length > 0) {
+        set({ items: loadedItems, activeCart: loadedCart, isLoaded: true });
+        return;
+      }
+
+      // 2. Fallback to server local storage file
+      try {
+        const res = await fetch(storagePath);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items) && data.items.length > 0) {
+            set({
+              items: data.items,
+              activeCart: data.activeCart || null,
+              isLoaded: true,
+            });
+
+            // Sync back to localStorage
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(storageKeys.items, JSON.stringify(data.items));
+                if (data.activeCart) {
+                  localStorage.setItem(storageKeys.cart, JSON.stringify(data.activeCart));
+                }
+              } catch {}
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not read BOM from server storage:', err);
+      }
+
+      set({ isLoaded: true });
+    },
+
+    resolveAllItems: async (explicitKey?: string) => {
+      const { items } = get();
+      if (items.length === 0) return;
+
+      const headers = credentialsOrPrompt(supplier, explicitKey);
+      if (!headers) return;
+
+      set({
+        isResolving: true,
+        resolveProgress: { current: 0, total: items.length, currentPart: 'Starting...' },
+      });
+
+      const updatedItems = [...items];
+
+      for (let i = 0; i < updatedItems.length; i++) {
+        const item = updatedItems[i];
+        set({
+          resolveProgress: {
+            current: i + 1,
+            total: updatedItems.length,
+            currentPart: item.rawPartNumber,
+          },
+        });
+
+        updatedItems[i] = await queryAndMatchSingleItem(item, supplier, headers);
+
+        // Update state incrementally so user sees live row-by-row updates
+        set({ items: [...updatedItems] });
+      }
+
+      set({ isResolving: false, resolveProgress: null });
+      persistToStorage(updatedItems, get().activeCart);
+    },
+
+    resolveSingleItem: async (id: string, explicitKey?: string) => {
+      const { items } = get();
+      const item = items.find((i) => i.id === id);
+      if (!item) return;
+
+      const headers = credentialsOrPrompt(supplier, explicitKey);
+      if (!headers) return;
+
+      const updatedItem = await queryAndMatchSingleItem(item, supplier, headers);
+      const updatedItems = get().items.map((i) => (i.id === id ? updatedItem : i));
+      set({ items: updatedItems });
+      persistToStorage(updatedItems, get().activeCart);
+    },
+
+    getSummary: (): BOMSummary => {
+      const { items } = get();
+      let totalQuantity = 0;
+      let totalCost = 0;
+      let matchedCount = 0;
+      let lowStockCount = 0;
+      let unresolvedCount = 0;
+      let fulfillableItems = 0;
+
+      items.forEach((item) => {
+        totalQuantity += item.requestedQty;
+        totalCost += item.extendedPrice;
+
+        if (item.status === 'matched') {
+          matchedCount++;
+          fulfillableItems++;
+        } else if (item.status === 'low_stock') {
+          lowStockCount++;
+        } else if (item.status === 'moq_warning') {
+          matchedCount++;
+          if (item.availableStock >= item.requestedQty) fulfillableItems++;
+        } else if (item.status === 'unresolved' || item.status === 'error') {
+          unresolvedCount++;
+        }
+      });
+
+      const fulfillmentRate =
+        items.length > 0 ? Math.round((fulfillableItems / items.length) * 100) : 0;
+
+      return {
+        totalLineItems: items.length,
+        totalQuantity,
+        totalCost,
+        currency: items[0]?.currency || 'USD',
+        matchedCount,
+        lowStockCount,
+        unresolvedCount,
+        fulfillmentRate,
+      };
+    },
+  }));
+}
+
+const bomStores: Record<Supplier, ReturnType<typeof createBomStore>> = {
+  mouser: createBomStore('mouser'),
+  digikey: createBomStore('digikey'),
+};
+
+/** Direct access to one supplier's BOM store (outside React or for a non-active supplier). */
+export function getBomStore(supplier: Supplier) {
+  return bomStores[supplier];
+}
+
+/** The BOM of the supplier currently selected in the UI. */
+export function useBomStore(): BomState {
+  const supplier = useSupplierStore((s) => s.activeSupplier);
+  return useStore(bomStores[supplier]);
+}
+
+/** Line counts per supplier, for the supplier switcher badges. */
+export function useBomItemCount(supplier: Supplier): number {
+  return useStore(bomStores[supplier], (s) => s.items.length);
+}

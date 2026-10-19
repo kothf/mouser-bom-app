@@ -4,7 +4,28 @@ A responsive, production-ready Full-Stack Web Application for electronic enginee
 
 ---
 
+## ⬇️ Download & Run (no build needed)
+
+Ready-to-run builds for Windows, macOS and Linux are attached to every [GitHub release](../../releases/latest).
+Install [Node.js 20+](https://nodejs.org/), unpack the archive for your system, and run `start.cmd` (Windows) or `./start.sh` (Linux/macOS). The app opens at http://localhost:3000.
+
+Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed (or when the workflow is run manually).
+
+---
+
 ## ⚡ Key Features
+
+### 0. Mouser and DigiKey, kept apart
+- A **supplier switcher** at the top selects Mouser or DigiKey. Each supplier has its **own BOM**, own storage (`data/saved-bom.json` vs `data/saved-bom-digikey.json`) and own cart flow, so results are never mixed in one BOM.
+- **DigiKey Product Information API v4**: part-number lookup (product details, falling back to exact keyword matches) and keyword search, with OAuth2 client-credentials tokens cached on the server and a rate limiter tuned for DigiKey's 120 requests/minute.
+- **DigiKey cart**: DigiKey has no public cart API comparable to Mouser's, so **Copy DigiKey Cart List** copies `Quantity, DigiKey Part Number, Customer Reference` lines and opens the DigiKey cart for pasting.
+
+### 0b. Tube Amp CAD import by keywords
+- The **Tube Amp CAD (Keywords)** tab reads BOM exports that list components by type and value instead of part numbers, e.g. `C1, Cap, 22uF, 450V, electrolytic`, `R1-R4 Res 100k 1W`, `V1 Tube 12AX7`.
+- Works with CSV, TSV, semicolon-separated, plain text and Excel exports, with or without a header row (`Ref`, `Type`, `Value`, `Voltage`, `Power`, `Qty`, `Description`).
+- Recognises capacitance (`22uF`, `4n7`, `0.1µF`), resistance (`100k`, `4k7`, `470R`, `1M5`), inductance (`5H`), voltage (`450V`), power (`1W`, `1/2W`), tolerance, designator ranges (`R1-R4`) and quantity markers (`x4`, `qty 2`).
+- Identical components are merged and quantities summed. Each line becomes a keyword search on the selected supplier, and the best in-stock match is picked (shown with a "Keyword" tag so it can be reviewed or replaced).
+- **Keywords are configurable** under *Edit keywords*: `Category: keyword, keyword | designator prefixes` (defaults: Cap/Capacitor/Elko → Capacitor, Res/Resistor → Resistor, Pot → Potentiometer, Tube/Valve → Vacuum Tube, Diode, Choke, Transformer, Socket, Fuse, Switch, Jack, LED) plus the column header names. Rules are saved in the browser.
 
 ### 1. Multi-Format BOM Ingestion & Smart Mapping
 - **File Formats Supported**: Microsoft Excel (`.xlsx`, `.xls`), CSV (`.csv`), TSV (`.tsv`), and plain text (`.txt`).
@@ -107,7 +128,17 @@ MOUSER_CART_API_KEY=your_cart_api_key_here
 
 # Optional: set to true to force offline demo simulation mode
 NEXT_PUBLIC_DEMO_MODE=false
+
+# Optional: DigiKey app credentials (https://developer.digikey.com/, Product Information V4)
+DIGIKEY_CLIENT_ID=your_client_id
+DIGIKEY_CLIENT_SECRET=your_client_secret
+# Optional: locale and sandbox
+# DIGIKEY_LOCALE_SITE=US
+# DIGIKEY_LOCALE_CURRENCY=USD
+# DIGIKEY_API_BASE=https://sandbox-api.digikey.com
 ```
+
+DigiKey credentials can also be entered per browser in **Settings**; they are stored in `localStorage` and only sent to this app's own server, which exchanges them for an OAuth token. Never commit real keys.
 
 *(Note: API keys can also be configured dynamically in the browser via the **Settings** modal, stored securely in `localStorage`).*
 
@@ -124,6 +155,14 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ```bash
 npm run build
 npm run start -p 3000
+```
+
+### 5. Checks
+
+```bash
+npm run lint
+npm run typecheck
+npm test        # vitest unit tests (CAD keyword parser, DigiKey normalisation)
 ```
 
 ---

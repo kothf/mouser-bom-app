@@ -28,6 +28,7 @@ import {
   Sparkles,
   ArrowLeftRight,
   Key,
+  Copy,
 } from 'lucide-react';
 import { BOMItem } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
@@ -35,12 +36,16 @@ import { useSettingsStore } from '@/store/settings-store';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { calculateTierPrice } from '@/lib/mouser/client';
 import { apiPath } from '@/lib/api-path';
+import { SUPPLIER_LABELS, SUPPLIER_SITES } from '@/lib/supplier';
 import { ExportDropdown } from './ExportDropdown';
+
+const DIGIKEY_CART_URL = 'https://www.digikey.com/ordering/shoppingcart';
 
 const columnHelper = createColumnHelper<BOMItem>();
 
 export function BomGrid() {
   const {
+    supplier,
     items,
     isResolving,
     resolveProgress,
@@ -62,6 +67,9 @@ export function BomGrid() {
   const [isPushingCart, setIsPushingCart] = useState(false);
   const [cartError, setCartError] = useState<string | null>(null);
   const [resolvingItemId, setResolvingItemId] = useState<string | null>(null);
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+
+  const label = SUPPLIER_LABELS[supplier];
 
   // Compute robust effective search key with localStorage fallback
   const effectiveSearchKey = useMemo(() => {
@@ -93,9 +101,37 @@ export function BomGrid() {
     return items.filter((i) => i.status === statusFilter);
   }, [items, statusFilter]);
 
+  // DigiKey has no public cart API: copy a quick-add list (Qty, DigiKey #, Customer Ref)
+  // and open the DigiKey cart, where it can be pasted.
+  const handleCopyDigiKeyCart = async () => {
+    const lines = items
+      .filter((i) => i.matchedPart?.MouserPartNumber)
+      .map((i) => `${i.requestedQty},${i.matchedPart!.MouserPartNumber},${(i.designator || '').replace(/,/g, ' ')}`);
+
+    if (lines.length === 0) {
+      alert('No resolved parts with DigiKey part numbers yet. Please resolve items first.');
+      return;
+    }
+
+    setCartError(null);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCartNotice(
+        `Copied ${lines.length} lines (Quantity, DigiKey Part Number, Customer Reference). Paste them into the bulk add / quick add box of the DigiKey cart that just opened.`
+      );
+      window.open(DIGIKEY_CART_URL, '_blank', 'noopener,noreferrer');
+    } catch (err: unknown) {
+      setCartError((err as Error).message || 'Could not copy to clipboard');
+    }
+  };
+
   // Handle Export to Mouser Cart API
   const handleExportToCart = async () => {
     if (items.length === 0) return;
+    if (supplier === 'digikey') {
+      await handleCopyDigiKeyCart();
+      return;
+    }
 
     // Validate only resolved parts with a valid Mouser Part Number
     const validItems = items
@@ -240,7 +276,7 @@ export function BomGrid() {
                     target="_blank"
                     rel="noreferrer"
                     className="text-slate-400 hover:text-blue-400 transition"
-                    title="Open on Mouser.com"
+                    title={`Open on ${SUPPLIER_SITES[supplier]}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -249,7 +285,16 @@ export function BomGrid() {
 
               {part?.MouserPartNumber && (
                 <p className="font-mono text-[11px] text-slate-400 truncate">
-                  Mouser: <span className="text-slate-300">{part.MouserPartNumber}</span>
+                  {label}: <span className="text-slate-300">{part.MouserPartNumber}</span>
+                </p>
+              )}
+
+              {item.searchMode === 'keyword' && (
+                <p
+                  className="text-[10px] text-amber-300/90 truncate"
+                  title={`Picked automatically from a keyword search: ${item.rawPartNumber}`}
+                >
+                  Keyword: <span className="font-mono">{item.rawPartNumber}</span>
                 </p>
               )}
 
@@ -336,7 +381,7 @@ export function BomGrid() {
 
       // 6. Factory Stock / Available Quantity
       columnHelper.accessor('availableStock', {
-        header: 'Mouser Stock',
+        header: `${label} Stock`,
         cell: (info) => {
           const item = info.row.original;
           const stock = info.getValue();
@@ -495,7 +540,7 @@ export function BomGrid() {
                 }}
                 disabled={isResolving || resolvingItemId === item.id}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800 disabled:opacity-50 transition"
-                title="Query live Mouser stock for this part"
+                title={`Query live ${label} stock for this part`}
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${
@@ -522,7 +567,7 @@ export function BomGrid() {
         },
       }),
     ],
-    [updateItemQty, deleteItem, setSelectedForReplace, resolveSingleItem, effectiveSearchKey, resolvingItemId, isResolving]
+    [updateItemQty, deleteItem, setSelectedForReplace, resolveSingleItem, effectiveSearchKey, resolvingItemId, isResolving, label, supplier]
   );
 
   const table = useReactTable({
@@ -544,19 +589,30 @@ export function BomGrid() {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden mb-12">
       {/* Alert banner when API key is rejected */}
-      {items.some((i) => /identifier|rejected/i.test(i.errorMessage || '')) && !isResolving && (
+      {items.some((i) => /identifier|rejected|authoriz|client id|secret/i.test(i.errorMessage || '')) && !isResolving && (
         <div className="bg-gradient-to-r from-rose-950/90 via-red-950/70 to-slate-900 border-b border-rose-500/40 p-3.5 px-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-3">
             <div className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400">
               <AlertTriangle className="w-4 h-4 text-rose-400" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-white">
-                Mouser API Key Rejected: &quot;Invalid unique identifier&quot;
-              </p>
-              <p className="text-[11px] text-slate-300">
-                Mouser rejected the configured key. Please ensure your <strong>Mouser Search API Key</strong> (not Cart/Order key) is entered in Settings.
-              </p>
+              {supplier === 'digikey' ? (
+                <>
+                  <p className="text-xs font-semibold text-white">DigiKey API Credentials Rejected or Missing</p>
+                  <p className="text-[11px] text-slate-300">
+                    Please check the <strong>Client ID</strong> and <strong>Client Secret</strong> of your DigiKey API app in Settings.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-white">
+                    Mouser API Key Rejected: &quot;Invalid unique identifier&quot;
+                  </p>
+                  <p className="text-[11px] text-slate-300">
+                    Mouser rejected the configured key. Please ensure your <strong>Mouser Search API Key</strong> (not Cart/Order key) is entered in Settings.
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <button
@@ -578,7 +634,7 @@ export function BomGrid() {
             </div>
             <div>
               <p className="text-xs font-semibold text-white">
-                BOM components waiting for live Mouser query
+                BOM components waiting for live {label} query
               </p>
               <p className="text-[11px] text-slate-300">
                 Live inventory, volume pricing, and lead times have not been fetched yet.
@@ -590,7 +646,7 @@ export function BomGrid() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950 shrink-0 transition"
           >
             <RefreshCw className="w-3.5 h-3.5 text-white" />
-            <span>⚡ Resolve with Mouser API</span>
+            <span>⚡ Resolve with {label} API</span>
           </button>
         </div>
       )}
@@ -676,10 +732,12 @@ export function BomGrid() {
           >
             {isPushingCart ? (
               <Loader2 className="w-4 h-4 animate-spin" />
+            ) : supplier === 'digikey' ? (
+              <Copy className="w-4 h-4" />
             ) : (
               <ShoppingCart className="w-4 h-4" />
             )}
-            <span>Export to Mouser Cart</span>
+            <span>{supplier === 'digikey' ? 'Copy DigiKey Cart List' : 'Export to Mouser Cart'}</span>
           </button>
 
           {/* Clear BOM Button */}
@@ -704,7 +762,7 @@ export function BomGrid() {
           <div className="flex items-center gap-2.5">
             <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
             <span>
-              Querying Mouser catalog: <strong>{resolveProgress.currentPart}</strong> ({resolveProgress.current} of{' '}
+              Querying {label} catalog: <strong>{resolveProgress.currentPart}</strong> ({resolveProgress.current} of{' '}
               {resolveProgress.total})
             </span>
           </div>
@@ -725,6 +783,19 @@ export function BomGrid() {
             <span>Cart Creation Error: {cartError}</span>
           </div>
           <button onClick={() => setCartError(null)} className="text-rose-400 hover:text-white">
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* DigiKey cart list notice */}
+      {cartNotice && (
+        <div className="bg-emerald-950/50 border-b border-emerald-800 p-3 px-6 text-xs text-emerald-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{cartNotice}</span>
+          </div>
+          <button onClick={() => setCartNotice(null)} className="text-emerald-400 hover:text-white">
             <XCircle className="w-4 h-4" />
           </button>
         </div>

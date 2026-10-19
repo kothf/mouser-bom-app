@@ -1,0 +1,2 @@
+release/*.cmd text eol=crlf
+release/*.sh text eol=lf

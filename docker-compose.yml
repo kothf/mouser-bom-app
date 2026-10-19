@@ -12,6 +12,9 @@ services:
       - NEXT_PUBLIC_BASE_PATH=/bom
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # Optional server-side DigiKey credentials (read from the host env / .env, never committed)
+      - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID:-}
+      - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET:-}
     networks:
       - proxy
     # No ports exposed to host. Maximum security via internal Docker network only.

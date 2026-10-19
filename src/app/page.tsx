@@ -25,21 +25,31 @@ import { ManualSearchModal } from '@/components/ManualSearchModal';
 import { ReplacePartModal } from '@/components/ReplacePartModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { CartSuccessModal } from '@/components/CartSuccessModal';
+import { SupplierSwitcher } from '@/components/SupplierSwitcher';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { useSupplierStore } from '@/store/supplier-store';
+import { SUPPLIER_LABELS } from '@/lib/supplier';
 import { ParsedRawFile } from '@/lib/mouser/types';
 
 export default function Home() {
-  const { items, setIsManualSearchOpen, clearBom, loadSavedBom, isLoaded } = useBomStore();
+  const { supplier, items, setIsManualSearchOpen, clearBom, loadSavedBom, isLoaded } = useBomStore();
   const { loadFromStorage } = useSettingsStore();
+  const { loadActiveSupplier } = useSupplierStore();
+  const label = SUPPLIER_LABELS[supplier];
 
   const [parsedFileForMapping, setParsedFileForMapping] = useState<ParsedRawFile | null>(null);
   const [showUploadAccordion, setShowUploadAccordion] = useState(false);
 
   useEffect(() => {
     loadFromStorage();
-    loadSavedBom();
-  }, [loadFromStorage, loadSavedBom]);
+    loadActiveSupplier();
+  }, [loadFromStorage, loadActiveSupplier]);
+
+  // Each supplier's BOM is loaded the first time it is shown.
+  useEffect(() => {
+    if (!isLoaded) loadSavedBom();
+  }, [isLoaded, loadSavedBom]);
 
   const handleParsedFile = (parsed: ParsedRawFile) => {
     setParsedFileForMapping(parsed);
@@ -54,6 +64,9 @@ export default function Home() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* API Key Notice Banner */}
         <ApiKeyBanner />
+
+        {/* Mouser / DigiKey BOM selector */}
+        <SupplierSwitcher />
 
         {/* When items exist in the BOM */}
         {items.length > 0 ? (
@@ -108,17 +121,17 @@ export default function Home() {
             )}
 
             {/* TanStack Table Data Grid */}
-            <BomGrid />
+            <BomGrid key={supplier} />
           </div>
         ) : (
           /* Empty State: Initial Ingestion Flow */
           <div className="space-y-8">
             <div className="text-center max-w-2xl mx-auto space-y-3">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                Bill of Materials (BOM) &amp; Mouser Cart Studio
+                Bill of Materials (BOM) &amp; {label} Cart Studio
               </h1>
               <p className="text-sm text-slate-400">
-                Ingest component spreadsheets, query Mouser Electronics in real-time for live stock and volume price tiers, and export directly to a Mouser Shopping Cart.
+                Ingest component spreadsheets or tube amp CAD exports, query {label} in real-time for live stock and volume price tiers, and move the result into a {label} shopping cart.
               </p>
               <div className="flex items-center justify-center gap-3 pt-1">
                 <button
@@ -142,9 +155,9 @@ export default function Home() {
                 <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
                   <Zap className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-semibold text-white">Live Mouser Search API</h3>
+                <h3 className="text-sm font-semibold text-white">Live Mouser &amp; DigiKey Search</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Automatically queries Mouser REST API by Manufacturer Part Number (MPN) or Mouser Part # with rate-limit throttling and exponential backoff.
+                  Queries the Mouser and DigiKey APIs by Manufacturer Part Number, distributor part number, or component keywords, with rate-limit throttling and backoff. Each supplier keeps its own BOM.
                 </p>
               </div>
 
@@ -162,9 +175,9 @@ export default function Home() {
                 <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
                   <ShoppingCart className="w-5 h-5" />
                 </div>
-                <h3 className="text-sm font-semibold text-white">1-Click Mouser Cart Push</h3>
+                <h3 className="text-sm font-semibold text-white">Cart Export</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Transfers matched components directly into Mouser Cart API, generating a Cart Key and a direct checkout URL on Mouser.com.
+                  Pushes matched Mouser parts straight into a Mouser cart with a checkout link, or copies a DigiKey quick-add list for the DigiKey cart.
                 </p>
               </div>
             </div>
@@ -175,7 +188,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p>Mouser BOM Studio • Full-Stack Web Application</p>
+          <p>BOM Studio for Mouser &amp; DigiKey • Full-Stack Web Application</p>
           <div className="zx-spectrum-badge whitespace-nowrap flex-nowrap shrink-0">
             <span className="zx-rainbow-stripe" aria-hidden="true" />
             <span className="zx-spectrum-text whitespace-nowrap">Designed by Andrey Dumchin - 4X5VA</span>
@@ -187,6 +200,7 @@ export default function Home() {
 
       {/* Modals & Dialogs */}
       <ColumnMappingModal
+        key={parsedFileForMapping ? `${parsedFileForMapping.fileName}-${parsedFileForMapping.rows.length}` : 'none'}
         parsedFile={parsedFileForMapping}
         onClose={() => setParsedFileForMapping(null)}
       />

@@ -1,12 +1,14 @@
 import * as XLSX from 'xlsx';
 import { BOMItem } from '../mouser/types';
+import { Supplier, SUPPLIER_LABELS } from '../supplier';
 
 /**
  * Enriched BOM Exporter
  * Exports calculated BOM data back into formatted XLSX or CSV.
  */
 
-export function exportBomToExcel(items: BOMItem[], fileName: string = 'Enriched_Mouser_BOM.xlsx') {
+export function exportBomToExcel(items: BOMItem[], supplier: Supplier = 'mouser', fileName?: string) {
+  const label = SUPPLIER_LABELS[supplier];
   const exportRows = items.map((item, index) => {
     const part = item.matchedPart;
 
@@ -14,13 +16,13 @@ export function exportBomToExcel(items: BOMItem[], fileName: string = 'Enriched_
       'Line #': item.lineNumber || index + 1,
       'Designator / Ref': item.designator || '',
       'Input Part Number': item.rawPartNumber,
-      'Mouser Part Number': part?.MouserPartNumber || (item.status === 'matched' ? item.rawPartNumber : 'N/A'),
+      [`${label} Part Number`]: part?.MouserPartNumber || (item.status === 'matched' ? item.rawPartNumber : 'N/A'),
       'Manufacturer Part Number': part?.ManufacturerPartNumber || item.rawPartNumber,
       'Manufacturer': part?.Manufacturer || 'N/A',
       'Description': part?.Description || item.notes || 'N/A',
       'Status': item.status.toUpperCase(),
       'Lifecycle': part?.LifecycleStatus || 'N/A',
-      'Mouser Available Stock': item.availableStock,
+      [`${label} Available Stock`]: item.availableStock,
       'MOQ': item.moq,
       'Order Multiple': item.orderMultiple,
       'Requested Qty': item.requestedQty,
@@ -29,7 +31,7 @@ export function exportBomToExcel(items: BOMItem[], fileName: string = 'Enriched_
       'Currency': item.currency || 'USD',
       'Meets MOQ': item.meetsMoq ? 'Yes' : 'NO (Below MOQ)',
       'Meets Multiple': item.meetsMultiple ? 'Yes' : 'NO (Order Multiple Mismatch)',
-      'Mouser URL': part?.ProductDetailUrl || '',
+      [`${label} URL`]: part?.ProductDetailUrl || '',
       'Datasheet URL': part?.DataSheetUrl || '',
     };
   });
@@ -42,7 +44,7 @@ export function exportBomToExcel(items: BOMItem[], fileName: string = 'Enriched_
     { wch: 8 },  // Line #
     { wch: 18 }, // Designator
     { wch: 22 }, // Input PN
-    { wch: 24 }, // Mouser PN
+    { wch: 24 }, // Supplier PN
     { wch: 24 }, // Mfr PN
     { wch: 22 }, // Manufacturer
     { wch: 45 }, // Description
@@ -57,17 +59,18 @@ export function exportBomToExcel(items: BOMItem[], fileName: string = 'Enriched_
     { wch: 10 }, // Currency
     { wch: 14 }, // Meets MOQ
     { wch: 14 }, // Meets Mult
-    { wch: 45 }, // Mouser URL
+    { wch: 45 }, // Supplier URL
     { wch: 45 }, // Datasheet URL
   ];
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Enriched BOM');
 
-  XLSX.writeFile(workbook, fileName);
+  XLSX.writeFile(workbook, fileName || `Enriched_${label}_BOM.xlsx`);
 }
 
-export function exportBomToCsv(items: BOMItem[], fileName: string = 'Enriched_Mouser_BOM.csv') {
+export function exportBomToCsv(items: BOMItem[], supplier: Supplier = 'mouser', fileName?: string) {
+  const label = SUPPLIER_LABELS[supplier];
   const exportRows = items.map((item, index) => {
     const part = item.matchedPart;
 
@@ -75,7 +78,7 @@ export function exportBomToCsv(items: BOMItem[], fileName: string = 'Enriched_Mo
       'Line #': item.lineNumber || index + 1,
       'Designator': item.designator || '',
       'Input Part Number': item.rawPartNumber,
-      'Mouser Part Number': part?.MouserPartNumber || '',
+      [`${label} Part Number`]: part?.MouserPartNumber || '',
       'Manufacturer Part Number': part?.ManufacturerPartNumber || '',
       'Manufacturer': part?.Manufacturer || '',
       'Description': (part?.Description || item.notes || '').replace(/[\r\n,]/g, ' '),
@@ -86,7 +89,7 @@ export function exportBomToCsv(items: BOMItem[], fileName: string = 'Enriched_Mo
       'Unit Price': item.unitPrice.toFixed(4),
       'Extended Total': item.extendedPrice.toFixed(2),
       'Currency': item.currency || 'USD',
-      'Mouser URL': part?.ProductDetailUrl || '',
+      [`${label} URL`]: part?.ProductDetailUrl || '',
     };
   });
 
@@ -97,7 +100,7 @@ export function exportBomToCsv(items: BOMItem[], fileName: string = 'Enriched_Mo
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
+  link.setAttribute('download', fileName || `Enriched_${label}_BOM.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -11,11 +11,13 @@ import {
   ArrowRight,
   Info,
   Plus,
+  Zap,
 } from 'lucide-react';
 import { parseBomFile, parseTextContent } from '@/lib/parser/bom-parser';
 import { ParsedRawFile } from '@/lib/mouser/types';
 import { SAMPLE_BOMS } from '@/lib/parser/sample-boms';
 import { useBomStore } from '@/store/bom-store';
+import { CadKeywordImport } from './CadKeywordImport';
 
 interface FileUploadZoneProps {
   onParsedFile: (parsed: ParsedRawFile) => void;
@@ -24,7 +26,7 @@ interface FileUploadZoneProps {
 export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
   const { setIsManualSearchOpen } = useBomStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'cad'>('upload');
   const [pastedText, setPastedText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
@@ -95,8 +97,8 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
       {/* Tab Selector */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4 mb-5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveTab('upload')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -119,6 +121,18 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
           >
             <ClipboardPaste className="w-4 h-4" />
             <span>Paste Raw BOM Text</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('cad')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeTab === 'cad'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>Tube Amp CAD (Keywords)</span>
           </button>
 
           <button
@@ -251,6 +265,9 @@ export function FileUploadZone({ onParsedFile }: FileUploadZoneProps) {
           </div>
         </div>
       )}
+
+      {/* Tab 3: CAD export matched by component keywords */}
+      {activeTab === 'cad' && <CadKeywordImport />}
 
       {/* Error Alert */}
       {errorMessage && (

@@ -1,0 +1,79 @@
+name: Release
+
+# Publishes a GitHub release with ready-to-run builds for Linux, macOS and
+# Windows. Triggered by pushing a version tag (e.g. v0.2.0) or manually.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (e.g. v0.2.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+          - os: macos-latest
+            name: macos-arm64
+          - os: windows-latest
+            name: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          # Desktop builds are served from the root path, not /bom
+          NEXT_PUBLIC_BASE_PATH: ''
+      - name: Package
+        shell: bash
+        run: |
+          node scripts/package-release.mjs "dist/bom-studio"
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a -tzip "bom-studio-${{ matrix.name }}.zip" bom-studio > /dev/null
+          else
+            tar -czf "bom-studio-${{ matrix.name }}.tar.gz" bom-studio
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bom-studio-${{ matrix.name }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          ls -la assets
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "BOM Studio $TAG" --generate-notes
+          fi

@@ -22,6 +22,7 @@ export interface MouserPart {
   ManufacturerPartNumber: string;
   Min: string; // Minimum Order Quantity (MOQ)
   Mult: string; // Order Multiple
+  // Distributor part number. Holds the DigiKey Product Number for DigiKey BOMs.
   MouserPartNumber: string;
   ProductDetailUrl: string;
   Reeling?: boolean;
@@ -104,6 +105,11 @@ export interface BOMItem {
   meetsMoq: boolean;
   meetsMultiple: boolean;
   isCustomPart?: boolean;
+
+  // 'keyword' items come from the CAD keyword import: rawPartNumber holds a
+  // search query (e.g. "22uF 450V electrolytic Capacitor") instead of an MPN.
+  searchMode?: 'partnumber' | 'keyword';
+  category?: string;
 }
 
 export interface ColumnMapping {

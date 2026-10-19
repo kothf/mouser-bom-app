@@ -13,23 +13,36 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { useSettingsStore } from '@/store/settings-store';
-import { useBomStore } from '@/store/bom-store';
+import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
+import { getBomStore } from '@/store/bom-store';
 import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
+import { supplierApiPath } from '@/lib/supplier';
 
 export function SettingsModal() {
+  const { isSettingsOpen } = useSettingsStore();
+  if (!isSettingsOpen) return null;
+  // Mounted on open, so the form starts from the saved settings each time.
+  return <SettingsDialog />;
+}
+
+function SettingsDialog() {
   const {
     searchApiKey,
     cartApiKey,
     rateLimitDelayMs,
     maxConcurrency,
-    isSettingsOpen,
+    digikeyClientId,
+    digikeyClientSecret,
+    digikeyLocaleSite,
+    digikeyLocaleCurrency,
     saveSettings,
+    saveDigiKeySettings,
     setIsSettingsOpen,
   } = useSettingsStore();
 
-  const { items, resolveAllItems } = useBomStore();
+  // Mouser settings re-check the Mouser BOM; DigiKey settings re-check the DigiKey BOM.
+  const { items, resolveAllItems } = getBomStore('mouser').getState();
 
   const [localSearchKey, setLocalSearchKey] = useState(searchApiKey);
   const [localCartKey, setLocalCartKey] = useState(cartApiKey);
@@ -43,18 +56,57 @@ export function SettingsModal() {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [testResult, setTestResult] = useState<{ valid: boolean; message: string } | null>(null);
 
-  React.useEffect(() => {
-    if (isSettingsOpen) {
-      setLocalSearchKey(searchApiKey);
-      setLocalCartKey(cartApiKey);
-      setLocalDelay(rateLimitDelayMs);
-      setLocalConcurrency(maxConcurrency);
-      setTestResult(null);
-      setSavedSuccess(false);
-    }
-  }, [isSettingsOpen, searchApiKey, cartApiKey, rateLimitDelayMs, maxConcurrency]);
+  const [dkClientId, setDkClientId] = useState(digikeyClientId);
+  const [dkClientSecret, setDkClientSecret] = useState(digikeyClientSecret);
+  const [dkSite, setDkSite] = useState(digikeyLocaleSite || 'US');
+  const [dkCurrency, setDkCurrency] = useState(digikeyLocaleCurrency || 'USD');
+  const [showDkSecret, setShowDkSecret] = useState(false);
+  const [testingDigiKey, setTestingDigiKey] = useState(false);
+  const [dkTestResult, setDkTestResult] = useState<{ valid: boolean; message: string } | null>(null);
 
-  if (!isSettingsOpen) return null;
+  const digikeyChanged =
+    dkClientId.trim() !== digikeyClientId ||
+    dkClientSecret.trim() !== digikeyClientSecret ||
+    dkSite.trim().toUpperCase() !== digikeyLocaleSite ||
+    dkCurrency.trim().toUpperCase() !== digikeyLocaleCurrency;
+
+  const saveDigiKey = () => {
+    saveDigiKeySettings({
+      digikeyClientId: dkClientId,
+      digikeyClientSecret: dkClientSecret,
+      digikeyLocaleSite: dkSite,
+      digikeyLocaleCurrency: dkCurrency,
+    });
+    const digikeyBom = getBomStore('digikey').getState();
+    if (digikeyBom.items.length > 0) {
+      digikeyBom.resolveAllItems();
+    }
+  };
+
+  const handleTestDigiKey = async () => {
+    setTestingDigiKey(true);
+    setDkTestResult(null);
+    try {
+      saveDigiKeySettings({
+        digikeyClientId: dkClientId,
+        digikeyClientSecret: dkClientSecret,
+        digikeyLocaleSite: dkSite,
+        digikeyLocaleCurrency: dkCurrency,
+      });
+      const { headers } = getSupplierSearchHeaders('digikey');
+      const res = await fetch(supplierApiPath('digikey', 'verify'), { method: 'POST', headers });
+      const data = await res.json();
+      setDkTestResult({
+        valid: Boolean(data.valid),
+        message: data.valid ? '✓ DigiKey credentials valid — saved' : data.message || 'DigiKey rejected the credentials',
+      });
+      if (data.valid) saveDigiKey();
+    } catch (err: unknown) {
+      setDkTestResult({ valid: false, message: (err as Error).message || 'Verification request failed' });
+    } finally {
+      setTestingDigiKey(false);
+    }
+  };
 
   const handleTestKey = async () => {
     const cleanKey = sanitizeApiKey(localSearchKey);
@@ -105,6 +157,7 @@ export function SettingsModal() {
     setLocalSearchKey(cleanSearch);
     setLocalCartKey(cleanCart);
     setIsSaving(true);
+    if (digikeyChanged) saveDigiKey();
     await saveSettings({
       searchApiKey: cleanSearch,
       cartApiKey: cleanCart,
@@ -125,6 +178,7 @@ export function SettingsModal() {
   };
 
   const handleClose = () => {
+    if (digikeyChanged && dkClientId.trim() && dkClientSecret.trim()) saveDigiKey();
     // If the user modified the key and it looks valid, persist it silently
     const cleanSearch = sanitizeApiKey(localSearchKey);
     if (cleanSearch && cleanSearch !== searchApiKey) {
@@ -151,8 +205,8 @@ export function SettingsModal() {
               <Key className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-white">Mouser API & Integration Settings</h2>
-              <p className="text-xs text-slate-400">Configure your Mouser API credentials and rate limits</p>
+              <h2 className="text-base font-semibold text-white">API & Integration Settings</h2>
+              <p className="text-xs text-slate-400">Configure your Mouser and DigiKey API credentials and rate limits</p>
             </div>
           </div>
           <button
@@ -284,11 +338,118 @@ export function SettingsModal() {
             </div>
           </div>
 
+          {/* DigiKey API credentials */}
+          <div className="space-y-3 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                DigiKey API (Product Information v4)
+              </label>
+              <a
+                href="https://developer.digikey.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              >
+                Create DigiKey App <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Create a production app on developer.digikey.com with the <strong>Product Information V4</strong> API and
+              paste its Client ID and Client Secret. They stay in this browser and are only sent to this app&apos;s own
+              server. A server can instead set <code>DIGIKEY_CLIENT_ID</code> and <code>DIGIKEY_CLIENT_SECRET</code>.
+            </p>
+            <input
+              type="text"
+              value={dkClientId}
+              onChange={(e) => {
+                setDkClientId(e.target.value);
+                setDkTestResult(null);
+              }}
+              placeholder="DigiKey Client ID"
+              autoComplete="off"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+            />
+            <div className="relative">
+              <input
+                type={showDkSecret ? 'text' : 'password'}
+                value={dkClientSecret}
+                onChange={(e) => {
+                  setDkClientSecret(e.target.value);
+                  setDkTestResult(null);
+                }}
+                placeholder="DigiKey Client Secret"
+                autoComplete="off"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 pr-10 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowDkSecret(!showDkSecret)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white rounded"
+              >
+                {showDkSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400">Locale site (country code)</label>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={dkSite}
+                  onChange={(e) => setDkSite(e.target.value.toUpperCase())}
+                  placeholder="US"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono uppercase"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-slate-400">Currency</label>
+                <input
+                  type="text"
+                  maxLength={3}
+                  value={dkCurrency}
+                  onChange={(e) => setDkCurrency(e.target.value.toUpperCase())}
+                  placeholder="USD"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono uppercase"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={handleTestDigiKey}
+                disabled={testingDigiKey || !dkClientId.trim() || !dkClientSecret.trim()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-slate-700 transition"
+              >
+                {testingDigiKey ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Test DigiKey Credentials
+                  </>
+                )}
+              </button>
+              {dkTestResult && (
+                <div
+                  className={`text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-md ${
+                    dkTestResult.valid
+                      ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800'
+                      : 'bg-rose-950/60 text-rose-300 border border-rose-800'
+                  }`}
+                >
+                  {dkTestResult.valid ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                  <span>{dkTestResult.message}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Rate Limiting & Concurrency Settings */}
           <div className="space-y-4 pt-2 border-t border-slate-800">
             <div className="flex items-center gap-2 text-white font-medium text-xs uppercase tracking-wider">
               <Sliders className="w-4 h-4 text-blue-400" />
-              <span>Rate Limiting & Concurrency Controls</span>
+              <span>Mouser Rate Limiting & Concurrency Controls</span>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
