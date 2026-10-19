@@ -17,6 +17,8 @@ Each release also publishes a Docker image, `ghcr.io/kothf/mouser-bom-app:<versi
 docker compose pull && docker compose up -d
 ```
 
+On the NUC that serves aerocat.tech, `/bom` follows `main` instead: cron runs `deploy/nuc/auto-deploy.sh` every 5 minutes, and when `main` has moved it builds the image locally, restarts the container and checks it. The live commit is at `https://aerocat.tech/bom/version.txt`. Details, rollback and setup are in [deploy/nuc/README.md](deploy/nuc/README.md).
+
 Optional server-wide DigiKey credentials go in a `.env` file beside `docker-compose.yml` (`DIGIKEY_CLIENT_ID=...`, `DIGIKEY_CLIENT_SECRET=...`). Saved BOMs live in the `bom-data` volume. If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
 
 Releases are built by `.github/workflows/release.yml`: every merge to `main` whose `package.json` version has no release yet publishes `v<version>` automatically (pushing a `v*` tag or running the workflow manually works too). Bump the version to ship a new release.

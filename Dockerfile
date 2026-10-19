@@ -17,6 +17,10 @@ ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Served as /bom/version.txt so the live commit can be checked
+ARG GIT_COMMIT=unknown
+RUN printf '%s\n' "$GIT_COMMIT" > public/version.txt
+
 RUN npm run build
 
 # Stage 3: Runner (minimal, non-root, isolated)
