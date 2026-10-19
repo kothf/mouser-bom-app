@@ -125,7 +125,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          build-args: NEXT_PUBLIC_BASE_PATH=/bom
+          build-args: |
+            NEXT_PUBLIC_BASE_PATH=/bom
+            GIT_COMMIT=${{ github.sha }}
           push: ${{ needs.prepare.outputs.publish == 'true' }}
           tags: |
             ${{ steps.image.outputs.name }}:${{ needs.prepare.outputs.tag }}

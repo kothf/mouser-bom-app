@@ -1,0 +1,6 @@
+# Used by auto-deploy.sh on the NUC on top of docker-compose.yml: run the image
+# built locally from main instead of pulling the release image from GHCR.
+services:
+  mouser-bom:
+    image: mouser-bom-local:current
+    pull_policy: never
