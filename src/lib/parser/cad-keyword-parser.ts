@@ -90,6 +90,7 @@ export const DEFAULT_CAD_CATEGORIES: CadCategoryRule[] = [
   { name: 'Switch', keywords: ['switch', 'toggle'], prefixes: ['S', 'SW'] },
   { name: 'Jack', keywords: ['jack', 'connector', 'socket jack'], prefixes: ['J'] },
   { name: 'LED', keywords: ['led', 'lamp', 'pilot'], prefixes: ['LED', 'LP'] },
+  { name: 'Loudspeaker', keywords: ['loudspeaker', 'speaker'], prefixes: ['BA', 'LS', 'SPK'] },
 ];
 
 export const DEFAULT_CAD_COLUMNS: Record<CadColumn, string[]> = {
@@ -381,6 +382,32 @@ function normalizeHeaderCell(cell: string): string {
   return cell.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function isRulerLine(line: string): boolean {
+  return /^[-=_+|\s]+$/.test(line) && /[-=_]{3,}/.test(line);
+}
+
+/**
+ * Column start positions of a fixed-width table, from its ruler line when there
+ * is one, otherwise from header words separated by two or more spaces.
+ */
+function fixedWidthColumnStarts(header: string, ruler: string | null): number[] | null {
+  const starts: number[] = [];
+  const re = ruler ? /[-=_]+/g : /\S+(?: \S+)*/g;
+  for (const m of (ruler || header).matchAll(re)) starts.push(m.index!);
+  return starts.length >= 2 ? starts : null;
+}
+
+/** Cut a fixed-width row at the column starts; a value overflowing to the left of its column stays whole. */
+function splitFixedWidth(line: string, starts: number[]): string[] {
+  const cuts = starts.map((start, i) => {
+    if (i === 0) return 0;
+    let cut = Math.min(start, line.length);
+    while (cut > starts[i - 1] && cut < line.length && line[cut - 1] !== ' ' && line[cut] !== ' ') cut--;
+    return cut;
+  });
+  return cuts.map((cut, i) => line.slice(cut, i + 1 < cuts.length ? cuts[i + 1] : undefined).trim());
+}
+
 function detectHeader(cells: string[], columns: Record<CadColumn, string[]>): Partial<Record<CadColumn, number>> | null {
   const mapping: Partial<Record<CadColumn, number>> = {};
   cells.forEach((cell, idx) => {
@@ -536,6 +563,8 @@ function applyRatingCell(
   prefixes: string[],
   into: Extracted
 ): void {
+  // "630 V" / "0.5 W" -> "630V" / "0.5W" so the unit stays with its number.
+  ratingCell = ratingCell.replace(/(\d)\s+(k?V(?:AC|DC)?|W|%)(?![a-z])/gi, '$1$2');
   const rating: Extracted = { category, designators: [], modifiers: [], freeWords: [] };
   extractFromText(ratingCell, config, prefixes, rating);
   // A bare number is volts for a capacitor and watts for a resistor.
@@ -543,9 +572,10 @@ function applyRatingCell(
     if (/capac/i.test(category.name)) rating.voltage = normalizeVoltage(`${ratingCell}V`) || undefined;
     else rating.power = normalizePower(`${ratingCell}W`) || undefined;
   }
-  into.voltage = into.voltage || rating.voltage;
-  into.power = into.power || rating.power;
-  into.tolerance = into.tolerance || rating.tolerance;
+  // The rating column is the source of truth for voltage and wattage.
+  into.voltage = rating.voltage || into.voltage;
+  into.power = rating.power || into.power;
+  into.tolerance = rating.tolerance || into.tolerance;
   for (const m of rating.modifiers) {
     if (!into.modifiers.includes(m)) into.modifiers.push(m);
   }
@@ -558,22 +588,41 @@ function buildQuery(category: string, valueParts: string[], modifiers: string[])
 export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD_CONFIG): CadParseResult {
   const prefixes = buildPrefixMatcher(config.categories);
   const rawLines = (text || '').split(/\r?\n/);
-  const content: { lineNumber: number; text: string }[] = [];
+  const content: { lineNumber: number; text: string; raw: string }[] = [];
+  // A ruler (---- ---) right under the first line marks a fixed-width table.
+  let ruler: string | null = null;
   rawLines.forEach((line, idx) => {
     const trimmed = line.trim();
     if (!trimmed || /^(#|\/\/|;|\*)/.test(trimmed)) return;
-    content.push({ lineNumber: idx + 1, text: trimmed });
+    if (isRulerLine(trimmed)) {
+      if (content.length === 1 && ruler === null) ruler = line.replace(/\t/g, ' ');
+      return;
+    }
+    content.push({ lineNumber: idx + 1, text: trimmed, raw: line.replace(/\t/g, ' ').replace(/\s+$/, '') });
   });
 
-  const delimiter = detectDelimiter(content.map((c) => c.text));
+  let delimiter = detectDelimiter(content.map((c) => c.text));
   let headerMap: Partial<Record<CadColumn, number>> | null = null;
+  let columnStarts: number[] | null = null;
   let startIndex = 0;
-  if (delimiter && content.length > 0) {
-    headerMap = detectHeader(splitDelimited(content[0].text, delimiter), config.columns);
-    if (headerMap) startIndex = 1;
-  } else if (content.length > 0) {
-    const headerCells = content[0].text.split(/\s{2,}|\s+/);
-    headerMap = detectHeader(headerCells, config.columns);
+  if (content.length > 0) {
+    const header = content[0];
+    // Fixed-width tables: commas inside cells ("C7, C8", "Capacitor, electrolytic")
+    // must not be read as a delimiter when the header itself has none.
+    if (ruler || !delimiter || !header.text.includes(delimiter)) {
+      const starts = fixedWidthColumnStarts(header.raw, ruler);
+      const map = starts ? detectHeader(splitFixedWidth(header.raw, starts), config.columns) : null;
+      if (starts && map) {
+        columnStarts = starts;
+        headerMap = map;
+        delimiter = null;
+      }
+    }
+    if (!headerMap && delimiter) {
+      headerMap = detectHeader(splitDelimited(header.text, delimiter), config.columns);
+    } else if (!headerMap) {
+      headerMap = detectHeader(header.text.split(/\s+/), config.columns);
+    }
     if (headerMap) startIndex = 1;
   }
 
@@ -581,12 +630,16 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
   const unmatched: CadUnmatchedLine[] = [];
 
   for (let i = startIndex; i < content.length; i++) {
-    const { lineNumber, text: lineText } = content[i];
+    const { lineNumber, text: lineText, raw } = content[i];
     const extracted: Extracted = { designators: [], modifiers: [], freeWords: [] };
     let ratingCell = '';
 
     if (headerMap) {
-      const cells = delimiter ? splitDelimited(lineText, delimiter) : lineText.split(/\s+/);
+      const cells = columnStarts
+        ? splitFixedWidth(raw, columnStarts)
+        : delimiter
+          ? splitDelimited(lineText, delimiter)
+          : lineText.split(/\s+/);
       const cell = (col: CadColumn) => (headerMap![col] !== undefined ? cells[headerMap![col]!] || '' : '');
 
       const refCell = cell('reference');
@@ -674,7 +727,7 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
     if (/capac/i.test(category.name)) value = extracted.capacitance || '';
     else if (/resist|pot/i.test(category.name)) value = extracted.resistance || '';
     else if (/induct|choke/i.test(category.name)) value = extracted.inductance || '';
-    else value = leftoverWords;
+    else value = leftoverWords || extracted.resistance || extracted.capacitance || extracted.inductance || '';
     if (!value && isPassive) {
       value = extracted.capacitance || extracted.resistance || extracted.inductance || '';
     }

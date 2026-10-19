@@ -174,3 +174,39 @@ describe('Rating/Data column', () => {
     expect(lines[0]).toMatchObject({ value: '220k Ohm', power: '0.5W' });
   });
 });
+
+describe('fixed-width text tables', () => {
+  const table = [
+    'Item  Qty  Designators  Description                Value   Rating / data            Part number',
+    '----  ---  -----------  -------------------------  ------  -----------------------  -----------',
+    '   1    2  BA1, BA2     Loudspeaker                4Ω',
+    '   2    1  C1           Capacitor                  6.8µF   630 V (433 V working)',
+    '   3    1  C2           Capacitor, electrolytic    220µF   500 V',
+    '   8    2  C7, C8       Capacitor, electrolytic    220µF   100 V',
+    '   9    1  R1           Resistor, metal film       100kΩ   1 W',
+    '  11    1  V1           Tube                       ECC83',
+  ];
+  const expected = [
+    '4 Ohm Loudspeaker',
+    '6.8uF 630V Capacitor',
+    '220uF 500V electrolytic Capacitor',
+    '220uF 100V electrolytic Capacitor',
+    '100k Ohm 1W metal film Resistor',
+    'ECC83 Vacuum Tube',
+  ];
+
+  it('splits columns by the ruler line and takes voltage and wattage from Rating / data', () => {
+    const { lines, headerDetected, unmatched } = parseCadBom(table.join('\n'));
+    expect(headerDetected).toBe(true);
+    expect(unmatched).toEqual([]);
+    expect(lines.map((l) => l.query)).toEqual(expected);
+    expect(lines[0]).toMatchObject({ designators: ['BA1', 'BA2'], quantity: 2 });
+    expect(lines[3]).toMatchObject({ designators: ['C7', 'C8'], quantity: 2 });
+  });
+
+  it('splits columns by header positions when there is no ruler line', () => {
+    const { lines, unmatched } = parseCadBom(table.filter((_, i) => i !== 1).join('\n'));
+    expect(unmatched).toEqual([]);
+    expect(lines.map((l) => l.query)).toEqual(expected);
+  });
+});
