@@ -6,7 +6,7 @@ import { useBomStore } from '@/store/bom-store';
 import { exportBomToExcel, exportBomToCsv } from '@/lib/export/excel-export';
 
 export function ExportDropdown() {
-  const { items } = useBomStore();
+  const { supplier, items } = useBomStore();
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -58,7 +58,7 @@ export function ExportDropdown() {
           <div className="p-1">
             <button
               onClick={() => {
-                exportBomToExcel(items);
+                exportBomToExcel(items, supplier);
                 setIsOpen(false);
               }}
               className="group flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-200 hover:bg-blue-600 hover:text-white rounded-lg transition"
@@ -74,7 +74,7 @@ export function ExportDropdown() {
 
             <button
               onClick={() => {
-                exportBomToCsv(items);
+                exportBomToCsv(items, supplier);
                 setIsOpen(false);
               }}
               className="group flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-200 hover:bg-blue-600 hover:text-white rounded-lg transition"

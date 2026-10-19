@@ -7,88 +7,87 @@ import {
   Check,
   RefreshCw,
   Loader2,
-  ExternalLink,
   FileText,
   AlertCircle,
 } from 'lucide-react';
-import { MouserPart } from '@/lib/mouser/types';
+import { BOMItem, MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
-import { useSettingsStore } from '@/store/settings-store';
+import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity } from '@/lib/mouser/client';
-import { apiPath } from '@/lib/api-path';
+import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+
+async function searchAlternates(supplier: Supplier, query: string): Promise<{ parts: MouserPart[]; error?: string }> {
+  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
+
+  // DigiKey may use credentials from the server environment, so only Mouser is checked here.
+  if (supplier === 'mouser' && !hasCredentials) {
+    return { parts: [], error: 'Mouser Search API Key is not configured. Please open Settings to enter your key.' };
+  }
+
+  try {
+    const res = await fetch(supplierApiPath(supplier, 'search/keyword'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ keyword: query, records: 15 }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: Failed to search`);
+    }
+
+    const data = await res.json();
+    if (data.error && (!data.parts || data.parts.length === 0)) {
+      return { parts: [], error: data.error };
+    }
+    return { parts: data.parts || [] };
+  } catch (err: unknown) {
+    return { parts: [], error: (err as Error).message || 'Failed to search replacement parts' };
+  }
+}
 
 export function ReplacePartModal() {
-  const {
-    isReplaceModalOpen,
-    setIsReplaceModalOpen,
-    selectedItemForReplace,
-    replaceItemPart,
-  } = useBomStore();
-  const { searchApiKey, setIsSettingsOpen } = useSettingsStore();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<MouserPart[]>([]);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (selectedItemForReplace) {
-      setSearchQuery(selectedItemForReplace.rawPartNumber);
-      // Auto-trigger initial search for the current part
-      handleSearch(selectedItemForReplace.rawPartNumber);
-    }
-  }, [selectedItemForReplace]);
+  const { isReplaceModalOpen, selectedItemForReplace } = useBomStore();
 
   if (!isReplaceModalOpen || !selectedItemForReplace) return null;
 
-  const handleSearch = async (queryText?: string) => {
-    const q = (queryText !== undefined ? queryText : searchQuery).trim();
+  // Keyed by item so the dialog starts fresh (and searches) for every row.
+  return <ReplacePartDialog key={selectedItemForReplace.id} item={selectedItemForReplace} />;
+}
+
+function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) {
+  const { supplier, setIsReplaceModalOpen, replaceItemPart } = useBomStore();
+  const { setIsSettingsOpen } = useSettingsStore();
+  const label = SUPPLIER_LABELS[supplier];
+
+  const [searchQuery, setSearchQuery] = useState(selectedItemForReplace.rawPartNumber);
+  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState<MouserPart[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Auto-trigger initial search for the current part
+  useEffect(() => {
+    let cancelled = false;
+    searchAlternates(supplier, selectedItemForReplace.rawPartNumber).then((result) => {
+      if (cancelled) return;
+      setResults(result.parts);
+      setErrorMsg(result.error || null);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supplier, selectedItemForReplace.rawPartNumber]);
+
+  const handleSearch = async () => {
+    const q = searchQuery.trim();
     if (!q) return;
-
-    let effectiveKey = searchApiKey?.trim();
-    if (!effectiveKey && typeof window !== 'undefined') {
-      try {
-        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
-        effectiveKey = stored.searchApiKey?.trim();
-      } catch {}
-    }
-
-    if (!effectiveKey) {
-      setErrorMsg('Mouser Search API Key is not configured. Please open Settings to enter your key.');
-      return;
-    }
 
     setLoading(true);
     setErrorMsg(null);
-
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-mouser-search-key': effectiveKey,
-      };
-
-      const res = await fetch(apiPath('/api/mouser/search/keyword'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ keyword: q, records: 15 }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: Failed to search`);
-      }
-
-      const data = await res.json();
-      if (data.error && (!data.parts || data.parts.length === 0)) {
-        setErrorMsg(data.error);
-        setResults([]);
-      } else {
-        setResults(data.parts || []);
-      }
-    } catch (err: unknown) {
-      setErrorMsg((err as Error).message || 'Failed to search replacement parts');
-    } finally {
-      setLoading(false);
-    }
+    const result = await searchAlternates(supplier, q);
+    setResults(result.parts);
+    setErrorMsg(result.error || null);
+    setLoading(false);
   };
 
   const handleSelectReplacement = (part: MouserPart) => {
@@ -134,7 +133,7 @@ export function ReplacePartModal() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search alternate MPN, Mouser Part #, or specs..."
+                placeholder={`Search alternate MPN, ${label} Part #, or specs...`}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 pr-10 font-mono"
               />
               {loading && (
@@ -180,7 +179,7 @@ export function ReplacePartModal() {
             </div>
           )}
 
-          {results.map((part) => {
+          {results.map((part, idx) => {
             const stockNum = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
             const inStock = stockNum > 0;
             const isCurrent =
@@ -189,7 +188,7 @@ export function ReplacePartModal() {
 
             return (
               <div
-                key={part.MouserPartNumber}
+                key={`${part.MouserPartNumber}-${part.ManufacturerPartNumber}-${idx}`}
                 className="bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl p-4 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
               >
                 <div className="space-y-1 flex-1">
@@ -217,7 +216,7 @@ export function ReplacePartModal() {
                   <p className="text-xs text-slate-300 line-clamp-2">{part.Description}</p>
 
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-1">
-                    <span className="font-mono text-slate-500">Mouser #: {part.MouserPartNumber}</span>
+                    <span className="font-mono text-slate-500">{label} #: {part.MouserPartNumber}</span>
                     <span>•</span>
                     <span>MOQ: <strong className="text-slate-200">{part.Min || '1'}</strong></span>
                     {part.DataSheetUrl && (

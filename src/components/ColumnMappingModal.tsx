@@ -6,6 +6,7 @@ import { ParsedRawFile, ColumnMapping } from '@/lib/mouser/types';
 import { buildBomItemsFromRows } from '@/lib/parser/bom-parser';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 interface ColumnMappingModalProps {
   parsedFile: ParsedRawFile | null;
@@ -13,7 +14,8 @@ interface ColumnMappingModalProps {
 }
 
 export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalProps) {
-  const { setItems, resolveAllItems } = useBomStore();
+  const { supplier, setItems, resolveAllItems } = useBomStore();
+  const label = SUPPLIER_LABELS[supplier];
   const { searchApiKey } = useSettingsStore();
 
   const [mapping, setMapping] = useState<ColumnMapping>(
@@ -37,7 +39,7 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
     setItems(items);
     onClose();
 
-    // Trigger automatic resolution through Mouser API with fallback
+    // Trigger automatic resolution through the selected supplier's API
     let effectiveKey = searchApiKey?.trim();
     if (!effectiveKey && typeof window !== 'undefined') {
       try {
@@ -84,7 +86,7 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
             {/* Part Number Column (Required) */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-white flex items-center gap-1">
-                <span>Part Number (MPN or Mouser #)</span>
+                <span>Part Number (MPN or {label} #)</span>
                 <span className="text-rose-400">*</span>
               </label>
               <select
@@ -237,7 +239,7 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
             disabled={!mapping.partNumberCol}
             className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white shadow-md transition"
           >
-            <span>Import & Query Mouser</span>
+            <span>Import & Query {label}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>

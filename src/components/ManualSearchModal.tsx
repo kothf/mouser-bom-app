@@ -14,14 +14,15 @@ import {
 } from 'lucide-react';
 import { MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
-import { useSettingsStore } from '@/store/settings-store';
+import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity, calculateTierPrice } from '@/lib/mouser/client';
 import { formatCurrency } from '@/lib/utils';
-import { apiPath } from '@/lib/api-path';
+import { SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 
 export function ManualSearchModal() {
-  const { isManualSearchOpen, setIsManualSearchOpen, addItem, items } = useBomStore();
-  const { searchApiKey, setIsSettingsOpen } = useSettingsStore();
+  const { supplier, isManualSearchOpen, setIsManualSearchOpen, addItem, items } = useBomStore();
+  const { setIsSettingsOpen } = useSettingsStore();
+  const label = SUPPLIER_LABELS[supplier];
 
   const [activeTab, setActiveTab] = useState<'search' | 'manual'>('search');
   const [query, setQuery] = useState('');
@@ -64,15 +65,10 @@ export function ManualSearchModal() {
     if (e) e.preventDefault();
     if (!query.trim()) return;
 
-    let effectiveKey = searchApiKey?.trim();
-    if (!effectiveKey && typeof window !== 'undefined') {
-      try {
-        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
-        effectiveKey = stored.searchApiKey?.trim();
-      } catch {}
-    }
+    const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
 
-    if (!effectiveKey) {
+    // DigiKey may use credentials from the server environment, so only Mouser is checked here.
+    if (supplier === 'mouser' && !hasCredentials) {
       setErrorMsg('Mouser Search API Key is not configured. Please open Settings to enter your key.');
       return;
     }
@@ -82,21 +78,15 @@ export function ManualSearchModal() {
     setSearched(true);
 
     try {
-      const endpoint = apiPath(
-        searchMode === 'partnumber'
-          ? '/api/mouser/search/partnumber'
-          : '/api/mouser/search/keyword'
+      const endpoint = supplierApiPath(
+        supplier,
+        searchMode === 'partnumber' ? 'search/partnumber' : 'search/keyword'
       );
 
       const payload =
         searchMode === 'partnumber'
           ? { partNumber: query.trim() }
           : { keyword: query.trim(), records: 20 };
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'x-mouser-search-key': effectiveKey,
-      };
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -151,11 +141,11 @@ export function ManualSearchModal() {
             </div>
             <div>
               <h2 className="text-base font-semibold text-white">
-                {activeTab === 'search' ? 'Search Mouser Electronic Components' : 'Add Line Item to BOM'}
+                {activeTab === 'search' ? `Search ${label} Electronic Components` : `Add Line Item to ${label} BOM`}
               </h2>
               <p className="text-xs text-slate-400">
                 {activeTab === 'search'
-                  ? 'Search live Mouser inventory by MPN, Mouser #, or keyword'
+                  ? `Search live ${label} inventory by MPN, ${label} #, or keyword`
                   : 'Manually add an individual component line directly into your BOM'}
               </p>
             </div>
@@ -172,7 +162,7 @@ export function ManualSearchModal() {
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Mouser Search
+                {label} Search
               </button>
               <button
                 type="button"
@@ -201,7 +191,7 @@ export function ManualSearchModal() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Part Number (MPN or Mouser #) <span className="text-rose-400">*</span>
+                  Part Number (MPN or {label} #) <span className="text-rose-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -397,11 +387,11 @@ export function ManualSearchModal() {
 
           {!searched && !loading && (
             <div className="text-center py-12 text-slate-500 text-xs">
-              Type a part number or description above to search live Mouser inventory, or switch to the &quot;Manual Entry&quot; tab.
+              Type a part number or description above to search live {label} inventory, or switch to the &quot;Manual Entry&quot; tab.
             </div>
           )}
 
-          {results.map((part) => {
+          {results.map((part, idx) => {
             const stockNum = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
             const inStock = stockNum > 0;
             const currentQty =
@@ -410,7 +400,7 @@ export function ManualSearchModal() {
 
             return (
               <div
-                key={part.MouserPartNumber}
+                key={`${part.MouserPartNumber}-${part.ManufacturerPartNumber}-${idx}`}
                 className="bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 rounded-xl p-4 transition space-y-3"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -436,7 +426,7 @@ export function ManualSearchModal() {
                     <p className="text-xs text-slate-300 leading-relaxed">{part.Description}</p>
 
                     <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-1">
-                      <span className="font-mono text-slate-500">Mouser #: {part.MouserPartNumber}</span>
+                      <span className="font-mono text-slate-500">{label} #: {part.MouserPartNumber}</span>
                       <span>•</span>
                       <span>MOQ: <strong className="text-slate-200">{part.Min || '1'}</strong></span>
                       <span>•</span>
@@ -463,7 +453,7 @@ export function ManualSearchModal() {
                             rel="noreferrer"
                             className="text-blue-400 hover:underline inline-flex items-center gap-1"
                           >
-                            Mouser Page <ExternalLink className="w-3 h-3" />
+                            {label} Page <ExternalLink className="w-3 h-3" />
                           </a>
                         </>
                       )}

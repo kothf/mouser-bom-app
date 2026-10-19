@@ -12,9 +12,11 @@ import {
 } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 export function Navbar() {
   const {
+    supplier,
     activeCart,
     setIsManualSearchOpen,
     setIsCartModalOpen,
@@ -22,8 +24,13 @@ export function Navbar() {
 
   const {
     searchApiKey,
+    digikeyClientId,
+    digikeyClientSecret,
     setIsSettingsOpen,
   } = useSettingsStore();
+
+  const hasCredentials =
+    supplier === 'digikey' ? Boolean(digikeyClientId && digikeyClientSecret) : Boolean(searchApiKey);
 
   return (
     <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30">
@@ -47,14 +54,14 @@ export function Navbar() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-white tracking-tight text-base sm:text-lg">
-                Mouser BOM Studio
+                BOM Studio
               </span>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
                 PRO
               </span>
             </div>
             <p className="text-[11px] text-slate-400 hidden sm:block">
-              Electronics Bill of Materials &amp; Shopping Cart Automation
+              Mouser &amp; DigiKey Bill of Materials Search &amp; Cart Automation
             </p>
             <div className="mt-1 flex items-center">
               <div className="zx-spectrum-badge whitespace-nowrap flex-nowrap shrink-0">
@@ -70,15 +77,15 @@ export function Navbar() {
         <div className="flex items-center gap-2.5">
           {/* Status Badge */}
           <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
-            {searchApiKey ? (
+            {hasCredentials ? (
               <>
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-300 font-medium">Mouser Live API</span>
+                <span className="text-emerald-300 font-medium">{SUPPLIER_LABELS[supplier]} Live API</span>
               </>
             ) : (
               <>
                 <Key className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-amber-300">API Key Required</span>
+                <span className="text-amber-300">{SUPPLIER_LABELS[supplier]} Key Required</span>
               </>
             )}
           </div>
@@ -89,7 +96,7 @@ export function Navbar() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow-sm transition"
           >
             <Search className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Search Catalog</span>
+            <span className="hidden sm:inline">Search {SUPPLIER_LABELS[supplier]}</span>
           </button>
 
           {/* Active Cart Quick Link */}
@@ -110,7 +117,7 @@ export function Navbar() {
             title="Configure API Keys & Settings"
           >
             <Settings className="w-4 h-4" />
-            {!searchApiKey && (
+            {!hasCredentials && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
             )}
           </button>
