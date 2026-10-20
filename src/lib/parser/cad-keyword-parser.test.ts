@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   buildCadConfig,
   cadLinesToBomItems,
@@ -208,5 +210,50 @@ describe('fixed-width text tables', () => {
     const { lines, unmatched } = parseCadBom(table.filter((_, i) => i !== 1).join('\n'));
     expect(unmatched).toEqual([]);
     expect(lines.map((l) => l.query)).toEqual(expected);
+  });
+});
+
+describe('real exports with title lines above the table', () => {
+  it('parses the GUB-245-01 fixed-width BOM with ratings from Rating / data, not Sim. max', () => {
+    const text = readFileSync(join(__dirname, '__fixtures__', 'GUB-245-01-BOM.txt'), 'utf8');
+    const { lines, headerDetected, unmatched } = parseCadBom(text);
+    expect(headerDetected).toBe(true);
+    const byRef = (ref: string) => lines.find((l) => l.designators.includes(ref))?.query;
+    expect(byRef('BA1')).toBe('4 Ohm Loudspeaker');
+    expect(byRef('C1')).toBe('6.8uF 400V Capacitor');
+    expect(byRef('C3')).toBe('470uF 100V electrolytic Capacitor');
+    expect(byRef('C7')).toBe('220uF 6.3V electrolytic Capacitor');
+    expect(byRef('R1')).toBe('180 Ohm 5W Resistor');
+    expect(byRef('R5')).toBe('470k Ohm 0.25W Resistor');
+    expect(byRef('T1')).toBe('Hammond 373BX Transformer');
+    expect(byRef('VL1')).toBe('5Ts4S Vacuum Tube');
+    expect(byRef('VL3')).toBe('6P14P Vacuum Tube');
+    expect(lines.filter((l) => l.category === 'Tube Socket').map((l) => l.quantity)).toEqual([1, 3]);
+    // Only the "26 lines, 41 parts" footer is left over.
+    expect(unmatched.map((u) => u.text)).toEqual(['26 lines, 41 parts']);
+  });
+
+  const rows = [
+    ['Item', 'Qty', 'Designators', 'Description', 'Value', 'Rating / data', 'Sim. max'],
+    ['1', '1', 'C1', 'Capacitor', '6.8µF', '400 V', '320V'],
+    ['2', '2', 'R1, R2', 'Resistor', '180Ω', '5 W', '21.1W'],
+  ];
+  const expected = ['6.8uF 400V Capacitor', '180 Ohm 5W Resistor'];
+
+  it('handles CSV with title lines', () => {
+    const csv = ['BILL OF MATERIALS', 'Amp, rev. A', '', ...rows.map((r) => r.map((c) => `"${c}"`).join(','))].join('\n');
+    const { lines, headerDetected } = parseCadBom(csv);
+    expect(headerDetected).toBe(true);
+    expect(lines.map((l) => l.query)).toEqual(expected);
+  });
+
+  it('handles spreadsheet rows converted with ; and empty title cells', () => {
+    const sheet = ['BILL OF MATERIALS;;;;;;', ';;;;;;', ...rows.map((r) => r.join(';'))].join('\n');
+    expect(parseCadBom(sheet).lines.map((l) => l.query)).toEqual(expected);
+  });
+
+  it('handles tab-separated exports', () => {
+    const tsv = ['BILL OF MATERIALS', ...rows.map((r) => r.join('\t'))].join('\n');
+    expect(parseCadBom(tsv).lines.map((l) => l.query)).toEqual(expected);
   });
 });
