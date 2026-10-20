@@ -15,20 +15,19 @@ import { useBomStore } from '@/store/bom-store';
 import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity } from '@/lib/mouser/client';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+import { mountingKeyword, partMounting } from '@/lib/mounting/mounting';
+import { alternateValueQueries } from '@/lib/value/notation';
 
-async function searchAlternates(supplier: Supplier, query: string): Promise<{ parts: MouserPart[]; error?: string }> {
-  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
-
-  // DigiKey may use credentials from the server environment, so only Mouser is checked here.
-  if (supplier === 'mouser' && !hasCredentials) {
-    return { parts: [], error: 'Mouser Search API Key is not configured. Please open Settings to enter your key.' };
-  }
-
+async function searchKeyword(
+  supplier: Supplier,
+  keyword: string,
+  headers: Record<string, string>
+): Promise<{ parts: MouserPart[]; error?: string }> {
   try {
     const res = await fetch(supplierApiPath(supplier, 'search/keyword'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ keyword: query, records: 15 }),
+      body: JSON.stringify({ keyword, records: 30 }),
     });
 
     if (!res.ok) {
@@ -43,6 +42,52 @@ async function searchAlternates(supplier: Supplier, query: string): Promise<{ pa
   } catch (err: unknown) {
     return { parts: [], error: (err as Error).message || 'Failed to search replacement parts' };
   }
+}
+
+/**
+ * Search replacements with the line's mounting (an unticked SMD box means
+ * through-hole parts only) and every other notation of the value
+ * (470nF = 0.47uF = 470000pF, 4.7k = 4K7 = 4700 Ohm). In-stock parts first.
+ */
+async function searchAlternates(
+  supplier: Supplier,
+  query: string,
+  item: BOMItem
+): Promise<{ parts: MouserPart[]; error?: string }> {
+  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
+
+  // DigiKey may use credentials from the server environment, so only Mouser is checked here.
+  if (supplier === 'mouser' && !hasCredentials) {
+    return { parts: [], error: 'Mouser Search API Key is not configured. Please open Settings to enter your key.' };
+  }
+
+  const wantSmd = Boolean(item.smd);
+  const hint = mountingKeyword(supplier, wantSmd);
+  const queries = [query, ...alternateValueQueries(query, item.category).map((a) => a.query)];
+  const results = await Promise.all(
+    queries.map(async (q) => {
+      const hinted = hint ? await searchKeyword(supplier, `${q} ${hint}`, headers) : null;
+      // The mounting word can hide parts the supplier describes differently,
+      // so fall back to the plain query; the filter below keeps mounting right.
+      return hinted && hinted.parts.length > 0 ? hinted : searchKeyword(supplier, q, headers);
+    })
+  );
+
+  const seen = new Set<string>();
+  const parts = results
+    .flatMap((r) => r.parts)
+    .filter((p) => partMounting(p) !== (wantSmd ? 'tht' : 'smd'))
+    .filter((p) => {
+      const key = `${p.MouserPartNumber}|${p.ManufacturerPartNumber}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const stockOf = (p: MouserPart) => parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
+  parts.sort((a, b) => Number(stockOf(b) > 0) - Number(stockOf(a) > 0));
+
+  const error = parts.length === 0 ? results.find((r) => r.error)?.error : undefined;
+  return { parts, error };
 }
 
 export function ReplacePartModal() {
@@ -67,7 +112,7 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
   // Auto-trigger initial search for the current part
   useEffect(() => {
     let cancelled = false;
-    searchAlternates(supplier, selectedItemForReplace.rawPartNumber).then((result) => {
+    searchAlternates(supplier, selectedItemForReplace.rawPartNumber, selectedItemForReplace).then((result) => {
       if (cancelled) return;
       setResults(result.parts);
       setErrorMsg(result.error || null);
@@ -76,7 +121,7 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
     return () => {
       cancelled = true;
     };
-  }, [supplier, selectedItemForReplace.rawPartNumber]);
+  }, [supplier, selectedItemForReplace]);
 
   const handleSearch = async () => {
     const q = searchQuery.trim();
@@ -84,7 +129,7 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
 
     setLoading(true);
     setErrorMsg(null);
-    const result = await searchAlternates(supplier, q);
+    const result = await searchAlternates(supplier, q, selectedItemForReplace);
     setResults(result.parts);
     setErrorMsg(result.error || null);
     setLoading(false);
@@ -151,6 +196,12 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
               <span>Search Alternates</span>
             </button>
           </form>
+          <p className="text-[11px] text-slate-500">
+            {selectedItemForReplace.smd
+              ? 'SMD is ticked for this line, so only surface-mount parts are shown.'
+              : 'SMD is not ticked for this line, so SMD parts are hidden.'}{' '}
+            Other ways of writing the value (e.g. 470nF = 0.47uF, 4.7k = 4K7) are searched too.
+          </p>
         </div>
 
         {/* Results List */}

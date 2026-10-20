@@ -9,6 +9,7 @@ import {
   requestedCapacitorVoltage,
   withVoltage,
 } from '@/lib/voltage/voltage';
+import { alternateValueQueries } from '@/lib/value/notation';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
@@ -94,6 +95,10 @@ export function pickBestKeywordPart(
   return [...parts].sort((a, b) => score(b) - score(a))[0] || parts[0];
 }
 
+function isAuthError(message?: string): boolean {
+  return Boolean(message) && /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected|authoriz|client id|secret/i.test(message!);
+}
+
 export async function queryAndMatchSingleItem(
   item: BOMItem,
   supplier: Supplier,
@@ -133,19 +138,19 @@ export async function queryAndMatchSingleItem(
       return result;
     };
 
-    let data;
-    let query = item.rawPartNumber;
-    let voltageNote: string | undefined;
-    if (isKeyword) {
-      data = await searchKeyword(query);
-      // Capacitors: when nothing is rated at the asked voltage, try the next
-      // higher standard ratings (400V -> 450V, 500V, 550V), never a lower one.
-      const volts = requestedCapacitorVoltage(item.rawPartNumber, item.category);
+    // One keyword lookup. Capacitors: when nothing is rated at the asked
+    // voltage, try the next higher standard ratings (400V -> 450V, 500V,
+    // 550V), never a lower one.
+    const resolveKeyword = async (base: string) => {
+      let query = base;
+      let voltageNote: string | undefined;
+      let data = await searchKeyword(base);
+      const volts = requestedCapacitorVoltage(base, item.category);
       if (volts !== null && !data.error) {
         const seen: MouserPart[] = [...(data.parts || [])];
         let found = partsRatedBetween(seen, volts, volts);
         for (const higher of found.length > 0 ? [] : higherRatings(volts)) {
-          const q = withVoltage(item.rawPartNumber, higher);
+          const q = withVoltage(base, higher);
           const next = await searchKeyword(q);
           if (next.error) continue;
           seen.push(...(next.parts || []));
@@ -166,6 +171,35 @@ export async function queryAndMatchSingleItem(
           }
         }
       }
+      const parts: MouserPart[] = data.error ? [] : data.parts || [];
+      const best = pickBestKeywordPart(parts, query, item.requestedQty, wantSmd);
+      const stock = best ? parseStockQuantity(best.Availability, best.AvailabilityInStock, best.FactoryStock) : 0;
+      return { data, query, voltageNote, best, stock };
+    };
+
+    let data;
+    let query = item.rawPartNumber;
+    let note: string | undefined;
+    if (isKeyword) {
+      let r = await resolveKeyword(item.rawPartNumber);
+      // Nothing in stock: the value may be written another way by the
+      // supplier (470nF = 0.47uF = 470000pF, 4.7k = 4K7 = 4700 Ohm).
+      let notationNote: string | undefined;
+      if (r.stock <= 0 && !isAuthError(r.data.error)) {
+        for (const alt of alternateValueQueries(item.rawPartNumber, item.category)) {
+          const next = await resolveKeyword(alt.query);
+          // Only a part that has stock, more than any found so far, and the
+          // line's mounting (an unticked SMD box means through-hole only).
+          if (!next.best || next.stock <= Math.max(r.stock, 0)) continue;
+          if (mountingScore(next.best, wantSmd) < 0) continue;
+          r = next;
+          notationNote = `None in stock as ${alt.from}, found as ${alt.to}`;
+          if (r.stock >= item.requestedQty) break;
+        }
+      }
+      data = r.data;
+      query = r.query;
+      note = [notationNote, r.voltageNote].filter(Boolean).join('; ') || undefined;
     } else {
       data = await search({
         partNumber: item.rawPartNumber,
@@ -212,7 +246,7 @@ export async function queryAndMatchSingleItem(
         meetsMultiple,
         status,
         errorMessage: undefined,
-        searchNote: voltageNote,
+        searchNote: note,
       };
     } else {
       const errMsg =
@@ -220,7 +254,7 @@ export async function queryAndMatchSingleItem(
         (isKeyword
           ? `No ${label} results for "${item.rawPartNumber}"`
           : `Part "${item.rawPartNumber}" not found in ${label} catalog`);
-      const isAuthOrNetworkError = /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected|authoriz|client id|secret/i.test(errMsg);
+      const isAuthOrNetworkError = isAuthError(errMsg);
 
       return {
         ...item,
