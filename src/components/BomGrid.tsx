@@ -374,6 +374,12 @@ export function BomGrid() {
                 </p>
               )}
 
+              {item.searchNote && part && (
+                <p className="text-[10px] text-cyan-300 truncate" title={item.searchNote}>
+                  {item.searchNote}
+                </p>
+              )}
+
               {part?.Manufacturer && (
                 <p className="text-[10px] text-slate-400 truncate">
                   Mfr: <span className="text-slate-200">{part.Manufacturer}</span>

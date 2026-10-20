@@ -2,6 +2,13 @@ import { createStore, useStore } from 'zustand';
 import { BOMItem, BOMSummary, MouserPart, MouserCartResponse } from '@/lib/mouser/types';
 import { calculateTierPrice, parseStockQuantity, pickBestMatchedPart } from '@/lib/mouser/client';
 import { mountingKeyword, mountingScore } from '@/lib/mounting/mounting';
+import {
+  higherRatings,
+  partsRatedBetween,
+  partVoltage,
+  requestedCapacitorVoltage,
+  withVoltage,
+} from '@/lib/voltage/voltage';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
@@ -87,7 +94,7 @@ export function pickBestKeywordPart(
   return [...parts].sort((a, b) => score(b) - score(a))[0] || parts[0];
 }
 
-async function queryAndMatchSingleItem(
+export async function queryAndMatchSingleItem(
   item: BOMItem,
   supplier: Supplier,
   headers: Record<string, string>
@@ -108,20 +115,55 @@ async function queryAndMatchSingleItem(
       return res.json();
     };
 
-    let data;
-    if (isKeyword) {
-      // Ask for the line's mounting first; if that finds nothing of the right
-      // kind, run the plain query too and pick from both result sets.
+    // Keyword search for one query: ask for the line's mounting first; if that
+    // finds nothing of the right kind, run the plain query too and pick from both.
+    const searchKeyword = async (query: string) => {
       const hint = mountingKeyword(supplier, wantSmd);
-      data = await search({ keyword: hint ? `${item.rawPartNumber} ${hint}` : item.rawPartNumber, records: 50 });
-      const hinted: MouserPart[] = data.error ? [] : data.parts || [];
-      const best = pickBestKeywordPart(hinted, item.rawPartNumber, item.requestedQty, wantSmd);
+      let result = await search({ keyword: hint ? `${query} ${hint}` : query, records: 50 });
+      const hinted: MouserPart[] = result.error ? [] : result.parts || [];
+      const best = pickBestKeywordPart(hinted, query, item.requestedQty, wantSmd);
       if (hint && (!best || mountingScore(best, wantSmd) < 0)) {
-        const plain = await search({ keyword: item.rawPartNumber, records: 50 });
+        const plain = await search({ keyword: query, records: 50 });
         if (!plain.error) {
-          data = { ...plain, parts: [...hinted, ...(plain.parts || [])] };
+          result = { ...plain, parts: [...hinted, ...(plain.parts || [])] };
         } else if (hinted.length === 0) {
-          data = plain;
+          result = plain;
+        }
+      }
+      return result;
+    };
+
+    let data;
+    let query = item.rawPartNumber;
+    let voltageNote: string | undefined;
+    if (isKeyword) {
+      data = await searchKeyword(query);
+      // Capacitors: when nothing is rated at the asked voltage, try the next
+      // higher standard ratings (400V -> 450V, 500V, 550V), never a lower one.
+      const volts = requestedCapacitorVoltage(item.rawPartNumber, item.category);
+      if (volts !== null && !data.error) {
+        const seen: MouserPart[] = [...(data.parts || [])];
+        let found = partsRatedBetween(seen, volts, volts);
+        for (const higher of found.length > 0 ? [] : higherRatings(volts)) {
+          const q = withVoltage(item.rawPartNumber, higher);
+          const next = await searchKeyword(q);
+          if (next.error) continue;
+          seen.push(...(next.parts || []));
+          found = partsRatedBetween(next.parts || [], volts, higher);
+          if (found.length > 0) {
+            query = q;
+            break;
+          }
+        }
+        // Still nothing in range: take any part rated above the asked voltage.
+        if (found.length === 0) found = partsRatedBetween(seen, volts);
+        if (found.length > 0) {
+          data = { ...data, error: undefined, parts: found };
+          const best = pickBestKeywordPart(found, query, item.requestedQty, wantSmd);
+          const bestVolts = best ? partVoltage(best) : null;
+          if (bestVolts !== null && bestVolts > volts) {
+            voltageNote = `No ${volts}V part found, picked a ${bestVolts}V one`;
+          }
         }
       }
     } else {
@@ -137,7 +179,7 @@ async function queryAndMatchSingleItem(
     if (parts.length > 0 && !data.error) {
       const matchedPart =
         (isKeyword
-          ? pickBestKeywordPart(parts, item.rawPartNumber, item.requestedQty, wantSmd)
+          ? pickBestKeywordPart(parts, query, item.requestedQty, wantSmd)
           : pickBestMatchedPart(parts, item.rawPartNumber, wantSmd)) || parts[0];
       const stock = parseStockQuantity(
         matchedPart.Availability,
@@ -170,6 +212,7 @@ async function queryAndMatchSingleItem(
         meetsMultiple,
         status,
         errorMessage: undefined,
+        searchNote: voltageNote,
       };
     } else {
       const errMsg =
@@ -435,6 +478,7 @@ function createBomStore(supplier: Supplier) {
           meetsMultiple,
           status,
           errorMessage: undefined,
+          searchNote: undefined,
         };
       });
 
