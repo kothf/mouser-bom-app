@@ -1,0 +1,34 @@
+BILL OF MATERIALS
+Gubin 3-tube stereo amplifier 2 × 4.5 W: power supply
+GUB-245-01 · rev. A · 2026-10-07
+
+Item  Qty  Designators         Description                              Value          Rating / data                                         Sim. max                                      Part number
+----  ---  ------------------  ---------------------------------------  -------------  ----------------------------------------------------  --------------------------------------------  -----------
+   1    2  BA1, BA2            Loudspeaker                              4Ω                                                                   44.9mW
+   2    1  C1                  Capacitor                                6.8µF          400 V                                                 320V
+   3    1  C2                  Capacitor, electrolytic                  220µF          250 V                                                 164V
+   4    1  C3                  Capacitor, electrolytic                  470µF          100 V                                                 74.3V
+   5    1  C4                  Capacitor                                470nF          100 V                                                 74.3V
+   6    1  C5                  Capacitor, electrolytic                  47µF           16 V                                                  11.6V
+   7    1  C6                  Capacitor                                470nF          50 V                                                  11.6V
+   8    2  C7, C8              Capacitor, electrolytic                  220µF          6.3 V                                                 4.18V
+   9    1  L1                  Choke                                    2.5H           DCR 133Ω                                              359mA DC
+  10    2  R1, R2              Resistor                                 180Ω           5 W                                                   21.1W (over rating)
+  11    1  R3                  Resistor                                 330Ω           10 W                                                  24.8W (over rating)
+  12    1  R4                  Resistor                                 10kΩ           3 W                                                   345mW
+  13    2  R5, R6              Resistor                                 470kΩ          0.25 W                                                508nW
+  14    2  R7, R9              Resistor                                 35kΩ           2 W                                                   1.7mW
+  15    2  R8, R10             Resistor                                 360Ω           0.25 W                                                72.2µW
+  16    4  R11, R12, R17, R18  Resistor                                 1kΩ            0.25 W                                                78.9µW
+  17    2  R13, R14            Resistor                                 1.5kΩ          10 W                                                  9.23mW
+  18    2  R15, R16            Resistor                                 100Ω           0.25 W                                                531µW
+  19    1  SA1                 Changeover switch, 2 poles
+  20    1  T1                  Power transformer                        Hammond 373BX  350-0-350 V 201 mA; heaters 5 V CT 3 A, 6.3 V CT 5 A  HT 374mA DC · 186% (over rating)
+  21    2  T2, T3              Output transformer, single-ended         4k:4Ω          Lp 10H, DCR 150Ω                                      17.6mA DC
+  22    1  VL1                 Vacuum tube, full-wave vacuum rectifier  5Ts4S          Octal                                                 Rectified current 374mA · 299% (over rating)
+  23    1  VL2                 Vacuum tube, dual frame-grid triode      6N23P-EV       Noval B9A                                             Ik 216µA · 1%
+  24    2  VL3, VL4            Vacuum tube, power output pentode        6P14P          Noval B9A                                             Vg2k 62.6V · 21%
+  25    1                      Tube socket                              Octal          for VL1
+  26    3                      Tube socket                              Noval B9A      for VL2-VL4
+
+26 lines, 41 parts

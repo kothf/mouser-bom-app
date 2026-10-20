@@ -81,7 +81,7 @@ export const DEFAULT_CAD_CATEGORIES: CadCategoryRule[] = [
   { name: 'Capacitor', keywords: ['cap', 'caps', 'capacitor', 'condenser', 'elko', 'elco'], prefixes: ['C'] },
   { name: 'Resistor', keywords: ['res', 'resistor', 'resistance'], prefixes: ['R'] },
   { name: 'Potentiometer', keywords: ['pot', 'potentiometer', 'trimmer', 'trimpot'], prefixes: ['VR', 'RV', 'P'] },
-  { name: 'Vacuum Tube', keywords: ['tube', 'valve', 'triode', 'pentode', 'rectifier tube'], prefixes: ['V'] },
+  { name: 'Vacuum Tube', keywords: ['tube', 'valve', 'triode', 'pentode', 'rectifier tube', 'vacuum tube'], prefixes: ['V'] },
   { name: 'Tube Socket', keywords: ['socket'], prefixes: ['XV'] },
   { name: 'Diode', keywords: ['diode', 'rectifier', 'zener'], prefixes: ['D'] },
   { name: 'Transformer', keywords: ['transformer', 'xfmr', 'trafo', 'ot', 'pt'], prefixes: ['T', 'TR'] },
@@ -382,6 +382,17 @@ function normalizeHeaderCell(cell: string): string {
   return cell.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/** Tabs to spaces at 8-column stops, so tab-aligned tables keep their columns. */
+function expandTabs(line: string): string {
+  if (!line.includes('\t')) return line;
+  let out = '';
+  for (const ch of line) out += ch === '\t' ? ' '.repeat(8 - (out.length % 8)) : ch;
+  return out;
+}
+
+/** How far down the file a header row is looked for. */
+const MAX_HEADER_SEARCH_LINES = 10;
+
 function isRulerLine(line: string): boolean {
   return /^[-=_+|\s]+$/.test(line) && /[-=_]{3,}/.test(line);
 }
@@ -589,24 +600,29 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
   const prefixes = buildPrefixMatcher(config.categories);
   const rawLines = (text || '').split(/\r?\n/);
   const content: { lineNumber: number; text: string; raw: string }[] = [];
-  // A ruler (---- ---) right under the first line marks a fixed-width table.
-  let ruler: string | null = null;
+  // A ruler (---- ---) right under the header line marks a fixed-width table.
+  const rulerAfter = new Map<number, string>();
   rawLines.forEach((line, idx) => {
     const trimmed = line.trim();
     if (!trimmed || /^(#|\/\/|;|\*)/.test(trimmed)) return;
     if (isRulerLine(trimmed)) {
-      if (content.length === 1 && ruler === null) ruler = line.replace(/\t/g, ' ');
+      const prev = content.length - 1;
+      if (prev >= 0 && !rulerAfter.has(prev)) rulerAfter.set(prev, expandTabs(line));
       return;
     }
-    content.push({ lineNumber: idx + 1, text: trimmed, raw: line.replace(/\t/g, ' ').replace(/\s+$/, '') });
+    content.push({ lineNumber: idx + 1, text: trimmed, raw: expandTabs(line).replace(/\s+$/, '') });
   });
 
-  let delimiter = detectDelimiter(content.map((c) => c.text));
+  const detectedDelimiter = detectDelimiter(content.map((c) => c.text));
+  let delimiter = detectedDelimiter;
   let headerMap: Partial<Record<CadColumn, number>> | null = null;
   let columnStarts: number[] | null = null;
   let startIndex = 0;
-  if (content.length > 0) {
-    const header = content[0];
+  // The header may sit below title lines ("BILL OF MATERIALS", project name...); those are skipped.
+  for (let h = 0; h < Math.min(content.length, MAX_HEADER_SEARCH_LINES) && !headerMap; h++) {
+    const header = content[h];
+    const ruler = rulerAfter.get(h) ?? null;
+    delimiter = detectedDelimiter;
     // Fixed-width tables: commas inside cells ("C7, C8", "Capacitor, electrolytic")
     // must not be read as a delimiter when the header itself has none.
     if (ruler || !delimiter || !header.text.includes(delimiter)) {
@@ -623,8 +639,9 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
     } else if (!headerMap) {
       headerMap = detectHeader(header.text.split(/\s+/), config.columns);
     }
-    if (headerMap) startIndex = 1;
+    if (headerMap) startIndex = h + 1;
   }
+  if (!headerMap) delimiter = detectedDelimiter;
 
   const merged = new Map<string, CadBomLine>();
   const unmatched: CadUnmatchedLine[] = [];
@@ -633,6 +650,7 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
     const { lineNumber, text: lineText, raw } = content[i];
     const extracted: Extracted = { designators: [], modifiers: [], freeWords: [] };
     let ratingCell = '';
+    let valueCellText = '';
 
     if (headerMap) {
       const cells = columnStarts
@@ -672,6 +690,7 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
 
       // Value, type and description cells go through free-text extraction.
       const valueCell = cell('value');
+      valueCellText = valueCell.trim();
       extractFromText([typeCell, valueCell, cell('description')].join(' '), config, prefixes, extracted);
 
       // A bare number in the value column of a resistor means ohms.
@@ -727,7 +746,14 @@ export function parseCadBom(text: string, config: CadKeywordConfig = DEFAULT_CAD
     if (/capac/i.test(category.name)) value = extracted.capacitance || '';
     else if (/resist|pot/i.test(category.name)) value = extracted.resistance || '';
     else if (/induct|choke/i.test(category.name)) value = extracted.inductance || '';
-    else value = leftoverWords || extracted.resistance || extracted.capacitance || extracted.inductance || '';
+    else if (valueCellText) {
+      // With a Value column, its cell is the part (6N23P-EV, Hammond 373BX); description words stay out.
+      value =
+        normalizeResistance(valueCellText) ||
+        normalizeCapacitance(valueCellText) ||
+        normalizeInductance(valueCellText) ||
+        valueCellText;
+    } else value = leftoverWords || extracted.resistance || extracted.capacitance || extracted.inductance || '';
     if (!value && isPassive) {
       value = extracted.capacitance || extracted.resistance || extracted.inductance || '';
     }
