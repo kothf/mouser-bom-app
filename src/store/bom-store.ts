@@ -1,6 +1,7 @@
 import { createStore, useStore } from 'zustand';
 import { BOMItem, BOMSummary, MouserPart, MouserCartResponse } from '@/lib/mouser/types';
 import { calculateTierPrice, parseStockQuantity, pickBestMatchedPart } from '@/lib/mouser/client';
+import { mountingKeyword, mountingScore } from '@/lib/mounting/mounting';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
@@ -26,6 +27,7 @@ export interface BomState {
   setItems: (items: BOMItem[]) => void;
   addItem: (item: Partial<BOMItem>) => void;
   updateItemQty: (id: string, newQty: number) => void;
+  setItemSmd: (id: string, smd: boolean) => void;
   deleteItem: (id: string) => void;
   deleteItems: (ids: string[]) => void;
   clearBom: () => void;
@@ -49,10 +51,16 @@ const STORAGE_KEYS: Record<Supplier, { items: string; cart: string }> = {
 };
 
 /**
- * Pick the best part for a keyword query (CAD import): favour parts in stock
- * for the requested quantity whose description mentions the query's values.
+ * Pick the best part for a keyword query (CAD import): favour parts with the
+ * line's mounting (SMD or regular through-hole), in stock for the requested
+ * quantity, whose description mentions the query's values.
  */
-export function pickBestKeywordPart(parts: MouserPart[], query: string, requestedQty: number): MouserPart | null {
+export function pickBestKeywordPart(
+  parts: MouserPart[],
+  query: string,
+  requestedQty: number,
+  wantSmd: boolean = false
+): MouserPart | null {
   if (!parts || parts.length === 0) return null;
   const tokens = query
     .toLowerCase()
@@ -61,7 +69,7 @@ export function pickBestKeywordPart(parts: MouserPart[], query: string, requeste
     .filter((t) => t.length > 1 && /\d/.test(t));
 
   const score = (p: MouserPart): number => {
-    let s = 0;
+    let s = 500 * mountingScore(p, wantSmd);
     if (!p.MouserPartNumber || p.MouserPartNumber.toLowerCase() === 'n/a') s -= 1000;
     const stock = parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
     if (stock >= requestedQty) s += 400;
@@ -86,33 +94,51 @@ async function queryAndMatchSingleItem(
 ): Promise<BOMItem> {
   const label = SUPPLIER_LABELS[supplier];
   const isKeyword = item.searchMode === 'keyword';
+  const wantSmd = Boolean(item.smd);
   try {
-    const res = await fetch(supplierApiPath(supplier, isKeyword ? 'search/keyword' : 'search/partnumber'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(
-        isKeyword
-          ? { keyword: item.rawPartNumber, records: 25 }
-          : {
-              partNumber: item.rawPartNumber,
-              description: item.notes,
-              designator: item.designator,
-            }
-      ),
-    });
+    const search = async (body: Record<string, unknown>) => {
+      const res = await fetch(supplierApiPath(supplier, isKeyword ? 'search/keyword' : 'search/partnumber'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json();
+    };
 
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    let data;
+    if (isKeyword) {
+      // Ask for the line's mounting first; if that finds nothing of the right
+      // kind, run the plain query too and pick from both result sets.
+      const hint = mountingKeyword(supplier, wantSmd);
+      data = await search({ keyword: hint ? `${item.rawPartNumber} ${hint}` : item.rawPartNumber, records: 50 });
+      const hinted: MouserPart[] = data.error ? [] : data.parts || [];
+      const best = pickBestKeywordPart(hinted, item.rawPartNumber, item.requestedQty, wantSmd);
+      if (hint && (!best || mountingScore(best, wantSmd) < 0)) {
+        const plain = await search({ keyword: item.rawPartNumber, records: 50 });
+        if (!plain.error) {
+          data = { ...plain, parts: [...hinted, ...(plain.parts || [])] };
+        } else if (hinted.length === 0) {
+          data = plain;
+        }
+      }
+    } else {
+      data = await search({
+        partNumber: item.rawPartNumber,
+        description: item.notes,
+        designator: item.designator,
+      });
     }
 
-    const data = await res.json();
     const parts: MouserPart[] = data.parts || [];
 
     if (parts.length > 0 && !data.error) {
       const matchedPart =
         (isKeyword
-          ? pickBestKeywordPart(parts, item.rawPartNumber, item.requestedQty)
-          : pickBestMatchedPart(parts, item.rawPartNumber)) || parts[0];
+          ? pickBestKeywordPart(parts, item.rawPartNumber, item.requestedQty, wantSmd)
+          : pickBestMatchedPart(parts, item.rawPartNumber, wantSmd)) || parts[0];
       const stock = parseStockQuantity(
         matchedPart.Availability,
         matchedPart.AvailabilityInStock,
@@ -332,6 +358,12 @@ function createBomStore(supplier: Supplier) {
         };
       });
 
+      set({ items: updated });
+      persistToStorage(updated, get().activeCart);
+    },
+
+    setItemSmd: (id: string, smd: boolean) => {
+      const updated = get().items.map((item) => (item.id === id ? { ...item, smd } : item));
       set({ items: updated });
       persistToStorage(updated, get().activeCart);
     },

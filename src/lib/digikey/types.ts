@@ -34,6 +34,7 @@ export interface DigiKeyProduct {
   Category?: { CategoryId?: number; Name?: string };
   ManufacturerLeadWeeks?: string;
   Classifications?: { RohsStatus?: string };
+  Parameters?: Array<{ ParameterId?: number; ParameterText?: string; ValueText?: string }>;
 }
 
 export interface DigiKeyKeywordResponse {

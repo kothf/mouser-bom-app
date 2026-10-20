@@ -93,16 +93,66 @@ export function exportBomToCsv(items: BOMItem[], supplier: Supplier = 'mouser', 
     };
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(exportRows);
-  const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+  downloadCsv(XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(exportRows)), fileName || `Enriched_${label}_BOM.csv`);
+}
 
+function downloadCsv(csvContent: string, fileName: string) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', fileName || `Enriched_${label}_BOM.csv`);
+  link.setAttribute('download', fileName);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// DigiKey's BOM Manager limits the Customer Reference to 48 characters.
+const DIGIKEY_CUSTOMER_REF_MAX = 48;
+
+/**
+ * Rows in the column layout of the supplier's own BOM upload tool
+ * (Mouser BOM Tool, DigiKey BOM Manager), so the headers map without
+ * manual column matching. Lines with no real part number yet (an
+ * unresolved CAD keyword query) are left out: the tool cannot use them.
+ */
+export function buildSupplierUploadRows(items: BOMItem[], supplier: Supplier): Record<string, string | number>[] {
+  return items
+    .filter((item) => item.matchedPart || (item.searchMode !== 'keyword' && item.rawPartNumber.trim()))
+    .map((item): Record<string, string | number> => {
+      const part = item.matchedPart;
+      const supplierPn = part?.MouserPartNumber && part.MouserPartNumber.toLowerCase() !== 'n/a' ? part.MouserPartNumber : '';
+      const mpn = part?.ManufacturerPartNumber || item.rawPartNumber;
+      const description = (part?.Description || item.notes || '').replace(/[\r\n]+/g, ' ').trim();
+      const designator = (item.designator || '').trim();
+
+      if (supplier === 'digikey') {
+        return {
+          'Quantity': item.requestedQty,
+          'Digi-Key Part Number': supplierPn,
+          'Manufacturer Part Number': mpn,
+          'Manufacturer': part?.Manufacturer || '',
+          'Description': description,
+          'Customer Reference': designator.slice(0, DIGIKEY_CUSTOMER_REF_MAX),
+          'Reference Designator': designator,
+        };
+      }
+      return {
+        'Mouser Part Number': supplierPn,
+        'Manufacturer Part Number': mpn,
+        'Manufacturer': part?.Manufacturer || '',
+        'Description': description,
+        'Customer Part Number': designator,
+        'Quantity': item.requestedQty,
+      };
+    });
+}
+
+/** CSV ready to upload to the Mouser BOM Tool or the DigiKey BOM Manager. */
+export function exportBomForSupplierUpload(items: BOMItem[], supplier: Supplier, fileName?: string): number {
+  const rows = buildSupplierUploadRows(items, supplier);
+  if (rows.length === 0) return 0;
+  downloadCsv(XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(rows)), fileName || `${SUPPLIER_LABELS[supplier]}_BOM_upload.csv`);
+  return rows.length;
 }

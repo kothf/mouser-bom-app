@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -53,6 +53,7 @@ export function BomGrid() {
     isResolving,
     resolveProgress,
     updateItemQty,
+    setItemSmd,
     deleteItem,
     deleteItems,
     clearBom,
@@ -190,6 +191,22 @@ export function BomGrid() {
     [items, rowSelection]
   );
 
+  // Ticking SMD changes what the line should be searched for, so a line that
+  // was already looked up is searched again right away.
+  const handleToggleSmd = useCallback(
+    async (item: BOMItem, smd: boolean) => {
+      setItemSmd(item.id, smd);
+      if (item.status === 'pending' || isResolving) return;
+      setResolvingItemId(item.id);
+      try {
+        await resolveSingleItem(item.id, effectiveSearchKey);
+      } finally {
+        setResolvingItemId(null);
+      }
+    },
+    [setItemSmd, isResolving, resolveSingleItem, effectiveSearchKey]
+  );
+
   const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
     const noun = selectedIds.length === 1 ? 'line' : 'lines';
@@ -297,6 +314,20 @@ export function BomGrid() {
                 {info.getValue() || '—'}
               </span>
               <p className="text-[10px] text-slate-500">Line #{item.lineNumber}</p>
+              <label
+                className="flex items-center gap-1 text-[10px] text-slate-400 cursor-pointer select-none w-fit"
+                title="Search a surface-mount (SMD/SMT) part for this line. Unticked lines get regular through-hole parts."
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(item.smd)}
+                  onChange={(e) => handleToggleSmd(item, e.target.checked)}
+                  disabled={resolvingItemId === item.id}
+                  aria-label={`SMD/SMT part for line ${item.lineNumber}`}
+                  className="w-3 h-3 accent-cyan-500 cursor-pointer"
+                />
+                <span className={item.smd ? 'text-cyan-300 font-semibold' : ''}>SMD</span>
+              </label>
             </div>
           );
         },
@@ -618,7 +649,7 @@ export function BomGrid() {
         },
       }),
     ],
-    [updateItemQty, deleteItem, setSelectedForReplace, resolveSingleItem, effectiveSearchKey, resolvingItemId, isResolving, label, supplier]
+    [updateItemQty, deleteItem, setSelectedForReplace, resolveSingleItem, effectiveSearchKey, resolvingItemId, isResolving, label, supplier, handleToggleSmd]
   );
 
   const table = useReactTable({

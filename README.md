@@ -63,10 +63,12 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 - **Hover Price Break Matrix**: Interactive popover showing volume quantity discounts.
 - **Packaging & MOQ Indicators**: Flags parts where requested quantity is below Minimum Order Quantity (MOQ) or does not meet reel/cut-tape package multiples.
 - **Part Replacement Modal**: Search and substitute parts directly into any BOM row with automatic price and stock updates.
+- **SMD / regular parts per line**: Every line has an **SMD** checkbox under its designator. Unticked (the default) searches regular through-hole parts; ticked searches surface-mount (SMD/SMT) parts. The mounting is read from DigiKey's *Mounting Type* and Mouser's category (e.g. `Thick Film Resistors - SMD`). Ticking it on a line that was already looked up searches that line again.
 
 ### 4. 1-Click Mouser Cart Creation & Export
 - **Mouser Cart API (`POST /api/mouser/cart/create`)**: Pushes resolved items and quantities to create an active Mouser shopping session.
 - **Cart Key (GUID) & Direct Checkout**: Displays generated Cart Key with 1-click clipboard copy and direct **"Open Cart on Mouser.com"** navigation.
+- **Supplier BOM Upload Export**: **Mouser BOM Upload (.csv)** / **DigiKey BOM Upload (.csv)**, depending on the active BOM, writes the columns of the Mouser BOM Tool (`Mouser Part Number`, `Manufacturer Part Number`, `Manufacturer`, `Description`, `Customer Part Number`, `Quantity`) or the DigiKey BOM Manager (`Quantity`, `Digi-Key Part Number`, `Manufacturer Part Number`, `Manufacturer`, `Description`, `Customer Reference`, `Reference Designator`). Lines whose keyword search found nothing are left out.
 - **Enriched File Export**: Download calculated results back to Microsoft Excel (`.xlsx`), `.csv`, or copy as TSV text.
 
 ---
