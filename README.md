@@ -1,6 +1,19 @@
-# Mouser BOM Studio 🚀
+# BOM Studio 🚀
 
-A responsive, production-ready Full-Stack Web Application for electronic engineers and procurement specialists to search components, process uploaded Bills of Materials (BOM), display real-time pricing and stock, and generate Mouser shopping carts via the **Mouser Electronics REST API (Search API & Cart API)**.
+A responsive full-stack web app for electronics engineers and DIY builders: search components on **Mouser** or **DigiKey**, import a Bill of Materials (part-number BOMs or Tube Amp CAD keyword BOMs), see live USD pricing and stock, pick the best part by fit, manufacturer reputation and price, and send the result to the supplier's cart or BOM tool.
+
+Current version: **0.4.4**. The version is shown next to "BOM Studio" in the header (read from `package.json`). Live at [aerocat.tech/bom](https://aerocat.tech/bom).
+
+**At a glance**
+- Mouser / DigiKey switcher, each with its own BOM (never mixed).
+- Tube Amp CAD keyword import, reading values and ratings from the `Rating / data` column.
+- All prices in USD.
+- Per-line SMD checkbox, row checkboxes with **Delete selected**.
+- Capacitor searches step up to higher standard voltages when none are found; zero-stock caps and resistors retry other value notations.
+- 0-100 part score from manufacturer reputation tier and price.
+- Export as Mouser or DigiKey BOM upload CSV, Excel, CSV or TSV; Mouser cart via the Cart API.
+- BOMs live only in your browser's `localStorage`.
+- Docker image for server deployment, ready-to-run builds for Windows/macOS/Linux.
 
 ---
 
@@ -40,6 +53,7 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 - **Title lines above the table** (`BILL OF MATERIALS`, project name, revision...) are skipped: the header row is found within the first 10 lines.
 - **Ratings come from the `Rating / data` column** (also `Rating`, `Data`, `Spec`): for capacitors, resistors and pots its voltage, wattage, tolerance and type words go into the search query, e.g. `400 V` → `6.8uF 400V Capacitor`, `5 W` → `180 Ohm 5W Resistor`. A bare number is volts for a capacitor and watts for a resistor. Other columns such as `Sim. max` are ignored.
 - With a `Value` column, tubes, transformers, sockets and speakers search by that cell (`6P14P Vacuum Tube`, `Hammond 373BX Transformer`, `4 Ohm Loudspeaker`).
+- **Capacitors step up in voltage, never down**: when a capacitor search finds nothing at the rated voltage, the next standard ratings above it are tried (up to 3, e.g. `400V` → `450V`, `500V`, `550V`) and the row notes the rating picked (`No 400V part found, picked a 450V one`). A lower voltage is never used.
 - Recognises capacitance (`22uF`, `4n7`, `0.1µF`), resistance (`100k`, `4k7`, `470R`, `1M5`, `10kΩ`), inductance (`5H`), voltage (`450V`, `630 V`), power (`1W`, `1/2W`, `0.25 W`), tolerance, designator ranges (`R1-R4`) and quantity markers (`x4`, `qty 2`).
 - Identical components are merged and quantities summed. Each line becomes a keyword search on the selected supplier, and the best in-stock match is picked (shown with a "Keyword" tag so it can be reviewed or replaced). Lines that can't be classified are listed as skipped.
 - **Nothing in stock? Other notations are tried**: a capacitor or resistor line whose best match has zero stock is searched again with the value written another way (`470nF` → `0.47uF`, `470000pF`; `4.7k Ohm` → `4K7`, `4700 Ohm`), and an in-stock part with the line's mounting is used instead, with a note on the row.
@@ -65,6 +79,8 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 
 ### 3. Interactive BOM Grid & Dynamic Pricing Engine
 - **TanStack Table (React Table v8)**: Sortable columns, search filter, and status filters.
+- **Prices in USD only**: DigiKey is queried in USD; Mouser price breaks in another currency (set by the account behind the API key) are converted on the server (`src/lib/currency/usd.ts`, daily rate from frankfurter.dev, falling back to open.er-api.com).
+- **Select and delete lines**: every row has a checkbox (plus a select-all box in the header); **Delete selected (n)** removes the ticked lines from the active BOM.
 - **Dynamic Tiered Pricing**: Inline quantity adjustments automatically recalculate the matching price break tier and extended total (`Qty * Unit Price`).
 - **Hover Price Break Matrix**: Interactive popover showing volume quantity discounts.
 - **Packaging & MOQ Indicators**: Flags parts where requested quantity is below Minimum Order Quantity (MOQ) or does not meet reel/cut-tape package multiples.
@@ -77,52 +93,65 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 - **Supplier BOM Upload Export**: **Mouser BOM Upload (.csv)** / **DigiKey BOM Upload (.csv)**, depending on the active BOM, writes the columns of the Mouser BOM Tool (`Mouser Part Number`, `Manufacturer Part Number`, `Manufacturer`, `Description`, `Customer Part Number`, `Quantity`) or the DigiKey BOM Manager (`Quantity`, `Digi-Key Part Number`, `Manufacturer Part Number`, `Manufacturer`, `Description`, `Customer Reference`, `Reference Designator`). Lines whose keyword search found nothing are left out.
 - **Enriched File Export**: Download calculated results back to Microsoft Excel (`.xlsx`), `.csv`, or copy as TSV text.
 
+### 5. Look and feel
+- Dark, responsive layout that works on desktop and phones.
+- The browser-tab and home-screen icon is aerocat.tech's own favicon (`src/app/icon.png`, `apple-icon.png`, `favicon.ico`).
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
+
+Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Zustand, TanStack Table, SheetJS and PapaParse; unit tests with Vitest.
 
 ```
 mouser-bom-app/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── mouser/
-│   │   │       ├── search/
-│   │   │       │   ├── partnumber/route.ts  # Part Number Search Proxy
-│   │   │       │   ├── keyword/route.ts     # Keyword Search Proxy
-│   │   │       │   └── batch/route.ts       # Rate-limited Batch Search Proxy
-│   │   │       ├── cart/
-│   │   │       │   └── create/route.ts      # Mouser Cart API Proxy
-│   │   │       └── verify/route.ts          # API Key Live Validation
-│   │   ├── globals.css                      # Tailwind CSS v4 styling
-│   │   ├── layout.tsx                       # Dark-themed root layout
-│   │   └── page.tsx                         # Main Dashboard
+│   │   │   ├── mouser/
+│   │   │   │   ├── search/{partnumber,keyword,batch}/route.ts  # Mouser Search API proxy (rate-limited)
+│   │   │   │   ├── cart/create/route.ts       # Mouser Cart API proxy
+│   │   │   │   ├── settings/route.ts          # Server-side key status
+│   │   │   │   └── verify/route.ts            # API key validation
+│   │   │   └── digikey/
+│   │   │       ├── search/{partnumber,keyword}/route.ts  # DigiKey Product Information v4 proxy
+│   │   │       └── verify/route.ts            # OAuth credential check
+│   │   ├── icon.png, apple-icon.png, favicon.ico  # aerocat.tech icon
+│   │   ├── globals.css                        # Tailwind CSS v4 styling
+│   │   ├── layout.tsx                         # Root layout
+│   │   └── page.tsx                           # Main dashboard
 │   ├── components/
-│   │   ├── Navbar.tsx                       # Header & status bar
-│   │   ├── ApiKeyBanner.tsx                 # API key notice / Demo mode banner
-│   │   ├── SummaryCards.tsx                 # Cost, stock fulfillment & alert metrics
-│   │   ├── FileUploadZone.tsx               # Drag-and-drop & text ingestion
-│   │   ├── ColumnMappingModal.tsx           # Dynamic header mapping & preview
-│   │   ├── BomGrid.tsx                      # TanStack Table with inline editing
-│   │   ├── ManualSearchModal.tsx            # Ad-hoc Mouser search modal
-│   │   ├── ReplacePartModal.tsx             # Part alternate replacement modal
-│   │   ├── SettingsModal.tsx                # API keys & rate limit configuration
-│   │   ├── CartSuccessModal.tsx             # Mouser Cart checkout dialog
-│   │   └── ExportDropdown.tsx               # Excel (.xlsx) / CSV exporter
+│   │   ├── Navbar.tsx                         # Header, version label, status
+│   │   ├── SupplierSwitcher.tsx               # Mouser / DigiKey switch
+│   │   ├── FileUploadZone.tsx                 # Drag-and-drop & text ingestion
+│   │   ├── ColumnMappingModal.tsx             # Header mapping & preview
+│   │   ├── CadKeywordImport.tsx               # Tube Amp CAD keyword import
+│   │   ├── BomGrid.tsx                        # BOM table: SMD box, row selection, delete
+│   │   ├── ReplacePartModal.tsx               # Find Alternate (scored, mounting-aware)
+│   │   ├── ManualSearchModal.tsx              # Ad-hoc search
+│   │   ├── SummaryCards.tsx                   # Cost, stock & alert metrics
+│   │   ├── SettingsModal.tsx                  # API keys, DigiKey credentials, rate limits
+│   │   ├── CartSuccessModal.tsx               # Mouser cart / DigiKey cart list
+│   │   ├── ExportDropdown.tsx                 # Supplier BOM upload, XLSX, CSV, TSV
+│   │   └── ApiKeyBanner.tsx                   # API key / demo mode notice
 │   ├── lib/
-│   │   ├── mouser/
-│   │   │   ├── client.ts                    # Mouser REST API Client & price math
-│   │   │   ├── rate-limiter.ts              # Concurrency queue & backoff logic
-│   │   │   └── types.ts                     # TypeScript interfaces
-│   │   ├── parser/
-│   │   │   ├── bom-parser.ts                # XLSX / CSV / TXT parser
-│   │   │   ├── column-detector.ts           # Header detection heuristics
-│   │   │   └── sample-boms.ts               # Demo datasets
-│   │   └── export/
-│   │       └── excel-export.ts              # SheetJS XLSX/CSV generator
+│   │   ├── mouser/                            # Mouser client, price math, rate limiter, types
+│   │   ├── digikey/                           # DigiKey OAuth client & normalisation to the common part shape
+│   │   ├── currency/usd.ts                    # Server-side conversion to USD
+│   │   ├── voltage/voltage.ts                 # Higher-voltage capacitor fallback
+│   │   ├── value/notation.ts                  # Equivalent value notations (470nF = 0.47uF, 4.7k = 4K7)
+│   │   ├── mounting/mounting.ts               # SMD vs through-hole detection
+│   │   ├── scoring/manufacturers.ts           # Manufacturer tiers & 0-100 part score
+│   │   ├── parser/                            # BOM parser, column detector, CAD keyword parser, samples
+│   │   └── export/excel-export.ts             # XLSX/CSV and supplier BOM upload CSVs
 │   └── store/
-│       ├── bom-store.ts                     # Zustand BOM state & calculations
-│       └── settings-store.ts                # Settings & LocalStorage persistence
+│       ├── bom-store.ts                       # BOM state, lookups, fallbacks (localStorage per supplier)
+│       ├── supplier-store.ts                  # Active supplier
+│       └── settings-store.ts                  # Settings (localStorage)
+├── deploy/nuc/                                # Auto-deploy for the aerocat.tech NUC
+├── release/, scripts/package-release.mjs      # Ready-to-run release archives
+├── Dockerfile, docker-compose.yml             # Server image (built for the /bom path)
+└── .github/workflows/                         # CI (lint, typecheck, test, build) & release
 ```
 
 ---
@@ -166,7 +195,7 @@ All prices are shown in USD. DigiKey is asked for USD directly; Mouser prices in
 
 DigiKey credentials can also be entered per browser in **Settings**; they are stored in `localStorage` and only sent to this app's own server, which exchanges them for an OAuth token. Never commit real keys.
 
-*(Note: API keys can also be configured dynamically in the browser via the **Settings** modal, stored securely in `localStorage`).*
+Mouser API keys can also be entered in the browser via the **Settings** modal; they are stored in `localStorage`.
 
 ### 3. Development Server
 
@@ -188,19 +217,22 @@ npm run start -p 3000
 ```bash
 npm run lint
 npm run typecheck
-npm test        # vitest unit tests (CAD keyword parser incl. a real GUB-245-01 BOM fixture, DigiKey normalisation)
+npm test        # vitest: CAD keyword parser (incl. a real GUB-245-01 BOM fixture), DigiKey normalisation,
+                # USD conversion, voltage fallback, value notations, mounting, scoring, supplier upload export
 ```
 
 ---
 
 ## 📖 User Workflow
 
+0. **Pick a supplier**: choose Mouser or DigiKey at the top. Each has its own BOM.
 1. **Upload BOM**: Drag and drop an `.xlsx`, `.csv`, or `.txt` file, or click **"IoT Sensor Node"** to load a sample.
 2. **Review Header Mapping**: The modal auto-detects Part Number, Quantity, and Designators. Confirm and click **"Import & Query Mouser"**.
 3. **Inspect Real-Time Pricing & Stock**:
    - Status indicators highlight in-stock parts (Green), low-stock parts (Yellow), and MOQ warnings (Orange).
    - Adjust quantities directly in the **Req Qty** input to watch unit price update dynamically based on manufacturer price tiers.
-4. **Replace / Search Alternates**: Click the refresh icon on any row to search for pin-compatible alternatives and substitute them in one click.
-5. **Export to Mouser Cart**: Click **"Export to Mouser Cart"** to push parts to the Mouser Cart API. Copy the Cart Key or click **"Open Cart on Mouser.com"** to complete checkout.
+   - Tick **SMD** on a line to search surface-mount parts for it; tick row checkboxes and click **Delete selected** to drop lines.
+4. **Replace / Search Alternates**: Click the refresh icon on any row to open **Find Alternate**: it lists in-stock parts with the line's mounting, sorted by score, to substitute in one click.
+5. **Send to the supplier**: on Mouser, **Export to Mouser Cart** pushes parts to the Mouser Cart API (copy the Cart Key or **Open Cart on Mouser.com**). On DigiKey, **Copy DigiKey Cart List** copies lines to paste into the DigiKey cart. Either supplier's **BOM Upload (.csv)** can be loaded into its BOM tool.
 6. **Tube amp CAD BOM**: on the **Tube Amp CAD (keywords)** tab, click **Load file** (or paste), check the preview of categories, quantities and search queries, then **Import & search** on the selected supplier.
-7. **Download Enriched BOM**: Click **"Download Enriched BOM"** to save the fully calculated BOM as an Excel `.xlsx` or `.csv`.
+7. **Download Enriched BOM**: Click **"Download Enriched BOM"** to save the fully calculated BOM as an Excel `.xlsx` or `.csv`, or copy it as TSV.
