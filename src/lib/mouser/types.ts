@@ -18,6 +18,8 @@ export interface MouserPart {
   Category?: string;
   // "Surface Mount" / "Through Hole"; DigiKey's Mounting Type parameter.
   MountingType?: string;
+  // "450V"; DigiKey's Voltage - Rated parameter. Mouser has it in the description.
+  VoltageRating?: string;
   LeadTime?: string;
   LifecycleStatus?: string;
   Manufacturer: string;
@@ -116,6 +118,10 @@ export interface BOMItem {
   // SMD/SMT line: search surface-mount parts. Unset means a regular
   // (through-hole) part is wanted.
   smd?: boolean;
+
+  // Set when the search had to settle for something else, e.g. a higher
+  // voltage capacitor because none was found at the asked rating.
+  searchNote?: string;
 }
 
 export interface ColumnMapping {
