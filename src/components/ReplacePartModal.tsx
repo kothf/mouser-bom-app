@@ -17,6 +17,13 @@ import { parseStockQuantity } from '@/lib/mouser/client';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { mountingKeyword, partMounting } from '@/lib/mounting/mounting';
 import { alternateValueQueries } from '@/lib/value/notation';
+import {
+  ManufacturerTier,
+  manufacturerRule,
+  manufacturerScore,
+  priceScores,
+  valueScore,
+} from '@/lib/scoring/manufacturers';
 
 async function searchKeyword(
   supplier: Supplier,
@@ -47,13 +54,26 @@ async function searchKeyword(
 /**
  * Search replacements with the line's mounting (an unticked SMD box means
  * through-hole parts only) and every other notation of the value
- * (470nF = 0.47uF = 470000pF, 4.7k = 4K7 = 4700 Ohm). In-stock parts first.
+ * (470nF = 0.47uF = 470000pF, 4.7k = 4K7 = 4700 Ohm). In-stock parts first,
+ * then by manufacturer reputation and price.
  */
+interface ScoredPart {
+  part: MouserPart;
+  /** Forum rating of the manufacturer, 0-100. */
+  maker: number;
+  tier?: ManufacturerTier;
+  /** Price against the other results, 0-100 (cheapest = 100). */
+  price: number;
+  /** Manufacturer and price combined, 0-100. */
+  score: number;
+  stock: number;
+}
+
 async function searchAlternates(
   supplier: Supplier,
   query: string,
   item: BOMItem
-): Promise<{ parts: MouserPart[]; error?: string }> {
+): Promise<{ parts: ScoredPart[]; error?: string }> {
   const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
 
   // DigiKey may use credentials from the server environment, so only Mouser is checked here.
@@ -83,11 +103,18 @@ async function searchAlternates(
       seen.add(key);
       return true;
     });
-  const stockOf = (p: MouserPart) => parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
-  parts.sort((a, b) => Number(stockOf(b) > 0) - Number(stockOf(a) > 0));
+  const prices = priceScores(parts, item.requestedQty);
+  const scored: ScoredPart[] = parts.map((part) => {
+    const maker = manufacturerScore(part);
+    const price = prices.get(part) ?? 0;
+    const stock = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
+    return { part, maker, tier: manufacturerRule(part.Manufacturer)?.tier, price, score: valueScore(maker, price), stock };
+  });
+  // In-stock first, then the best manufacturer + price score.
+  scored.sort((a, b) => Number(b.stock > 0) - Number(a.stock > 0) || b.score - a.score);
 
-  const error = parts.length === 0 ? results.find((r) => r.error)?.error : undefined;
-  return { parts, error };
+  const error = scored.length === 0 ? results.find((r) => r.error)?.error : undefined;
+  return { parts: scored, error };
 }
 
 export function ReplacePartModal() {
@@ -106,7 +133,7 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
 
   const [searchQuery, setSearchQuery] = useState(selectedItemForReplace.rawPartNumber);
   const [loading, setLoading] = useState(true);
-  const [results, setResults] = useState<MouserPart[]>([]);
+  const [results, setResults] = useState<ScoredPart[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Auto-trigger initial search for the current part
@@ -200,7 +227,8 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
             {selectedItemForReplace.smd
               ? 'SMD is ticked for this line, so only surface-mount parts are shown.'
               : 'SMD is not ticked for this line, so SMD parts are hidden.'}{' '}
-            Other ways of writing the value (e.g. 470nF = 0.47uF, 4.7k = 4K7) are searched too.
+            Other ways of writing the value (e.g. 470nF = 0.47uF, 4.7k = 4K7) are searched too. In-stock parts come
+            first, then the best score (manufacturer rating and price, equal weight).
           </p>
         </div>
 
@@ -230,9 +258,8 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
             </div>
           )}
 
-          {results.map((part, idx) => {
-            const stockNum = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
-            const inStock = stockNum > 0;
+          {results.map(({ part, maker, tier, price, score, stock }, idx) => {
+            const inStock = stock > 0;
             const isCurrent =
               part.ManufacturerPartNumber.toUpperCase() ===
               selectedItemForReplace.rawPartNumber.toUpperCase();
@@ -270,6 +297,16 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
                     <span className="font-mono text-slate-500">{label} #: {part.MouserPartNumber}</span>
                     <span>•</span>
                     <span>MOQ: <strong className="text-slate-200">{part.Min || '1'}</strong></span>
+                    <span>•</span>
+                    <span
+                      title={`Manufacturer ${maker}/100${tier ? ` (tier ${tier})` : ' (not rated)'}, price ${price}/100`}
+                    >
+                      Score: <strong className="text-slate-200">{score}</strong>
+                      <span className="text-slate-500">
+                        {' '}
+                        (maker {tier ? `tier ${tier}` : 'unrated'}, price {price})
+                      </span>
+                    </span>
                     {part.DataSheetUrl && (
                       <>
                         <span>•</span>
