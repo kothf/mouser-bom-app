@@ -195,8 +195,6 @@ function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Record<s
 
 function createBomStore(supplier: Supplier) {
   const storageKeys = STORAGE_KEYS[supplier];
-  const storagePath = supplierApiPath(supplier, 'bom/storage');
-  let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function persistToStorage(items: BOMItem[], activeCart: MouserCartResponse | null) {
     if (typeof window !== 'undefined') {
@@ -211,20 +209,6 @@ function createBomStore(supplier: Supplier) {
         console.warn('Failed to save BOM to browser localStorage:', err);
       }
     }
-
-    // Sync to local server file storage in background
-    if (syncDebounceTimer) {
-      clearTimeout(syncDebounceTimer);
-    }
-    syncDebounceTimer = setTimeout(() => {
-      fetch(storagePath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, activeCart }),
-      }).catch((err) => {
-        console.warn('Failed to persist BOM to server storage:', err);
-      });
-    }, 350);
   }
 
   return createStore<BomState>((set, get) => ({
@@ -374,12 +358,6 @@ function createBomStore(supplier: Supplier) {
         } catch {}
       }
 
-      if (syncDebounceTimer) {
-        clearTimeout(syncDebounceTimer);
-        syncDebounceTimer = null;
-      }
-
-      fetch(storagePath, { method: 'DELETE' }).catch(() => {});
       set({ items: [], activeCart: null, selectedItemForReplace: null, resolveProgress: null });
     },
 
@@ -452,7 +430,7 @@ function createBomStore(supplier: Supplier) {
       let loadedItems: BOMItem[] | null = null;
       let loadedCart: MouserCartResponse | null = null;
 
-      // 1. Try browser localStorage first
+      // BOMs live only in this browser so visitors never see each other's BOMs
       if (typeof window !== 'undefined') {
         try {
           const localRaw = localStorage.getItem(storageKeys.items);
@@ -471,40 +449,7 @@ function createBomStore(supplier: Supplier) {
         }
       }
 
-      if (loadedItems && loadedItems.length > 0) {
-        set({ items: loadedItems, activeCart: loadedCart, isLoaded: true });
-        return;
-      }
-
-      // 2. Fallback to server local storage file
-      try {
-        const res = await fetch(storagePath);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.items) && data.items.length > 0) {
-            set({
-              items: data.items,
-              activeCart: data.activeCart || null,
-              isLoaded: true,
-            });
-
-            // Sync back to localStorage
-            if (typeof window !== 'undefined') {
-              try {
-                localStorage.setItem(storageKeys.items, JSON.stringify(data.items));
-                if (data.activeCart) {
-                  localStorage.setItem(storageKeys.cart, JSON.stringify(data.activeCart));
-                }
-              } catch {}
-            }
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Could not read BOM from server storage:', err);
-      }
-
-      set({ isLoaded: true });
+      set({ items: loadedItems ?? [], activeCart: loadedCart, isLoaded: true });
     },
 
     resolveAllItems: async (explicitKey?: string) => {

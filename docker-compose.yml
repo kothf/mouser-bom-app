@@ -20,15 +20,9 @@ services:
       # Optional server-side DigiKey credentials (read from the host env / .env, never committed)
       - DIGIKEY_CLIENT_ID=${DIGIKEY_CLIENT_ID:-}
       - DIGIKEY_CLIENT_SECRET=${DIGIKEY_CLIENT_SECRET:-}
-    volumes:
-      # Keeps saved Mouser and DigiKey BOMs across container updates
-      - bom-data:/app/data
     networks:
       - proxy
     # No ports exposed to host. Maximum security via internal Docker network only.
-
-volumes:
-  bom-data:
 
 networks:
   proxy:
