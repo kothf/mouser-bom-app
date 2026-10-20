@@ -10,6 +10,7 @@ import {
   withVoltage,
 } from '@/lib/voltage/voltage';
 import { alternateValueQueries } from '@/lib/value/notation';
+import { manufacturerScore, priceScores, valueScore } from '@/lib/scoring/manufacturers';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
@@ -61,7 +62,8 @@ const STORAGE_KEYS: Record<Supplier, { items: string; cart: string }> = {
 /**
  * Pick the best part for a keyword query (CAD import): favour parts with the
  * line's mounting (SMD or regular through-hole), in stock for the requested
- * quantity, whose description mentions the query's values.
+ * quantity, whose description mentions the query's values. Among those, a
+ * well-rated manufacturer and a lower price win (never over a missed value).
  */
 export function pickBestKeywordPart(
   parts: MouserPart[],
@@ -76,8 +78,10 @@ export function pickBestKeywordPart(
     .map((t) => t.replace(/ohm$/, ''))
     .filter((t) => t.length > 1 && /\d/.test(t));
 
+  const prices = priceScores(parts, requestedQty);
   const score = (p: MouserPart): number => {
     let s = 500 * mountingScore(p, wantSmd);
+    s += valueScore(manufacturerScore(p), prices.get(p) ?? 0);
     if (!p.MouserPartNumber || p.MouserPartNumber.toLowerCase() === 'n/a') s -= 1000;
     const stock = parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
     if (stock >= requestedQty) s += 400;
@@ -87,7 +91,7 @@ export function pickBestKeywordPart(
     if (moq <= requestedQty) s += 100;
     const haystack = `${p.Description} ${p.ManufacturerPartNumber}`.toLowerCase().replace(/\s+/g, '');
     tokens.forEach((t) => {
-      if (haystack.includes(t.replace(/\s+/g, ''))) s += 60;
+      if (haystack.includes(t.replace(/\s+/g, ''))) s += 120;
     });
     return s;
   };
