@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FileSpreadsheet, FileText, Copy, Check, ChevronDown } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Copy, Check, ChevronDown, Upload } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
-import { exportBomToExcel, exportBomToCsv } from '@/lib/export/excel-export';
+import { exportBomToExcel, exportBomToCsv, exportBomForSupplierUpload } from '@/lib/export/excel-export';
+import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 export function ExportDropdown() {
   const { supplier, items } = useBomStore();
@@ -22,6 +23,17 @@ export function ExportDropdown() {
   }, []);
 
   if (items.length === 0) return null;
+
+  const label = SUPPLIER_LABELS[supplier];
+  const uploadTool = supplier === 'digikey' ? 'DigiKey BOM Manager' : 'Mouser BOM Tool';
+
+  const handleSupplierUpload = () => {
+    const count = exportBomForSupplierUpload(items, supplier);
+    if (count === 0) {
+      alert(`No lines with a part number yet. Look the BOM up on ${label} first.`);
+    }
+    setIsOpen(false);
+  };
 
   const handleCopyTsv = () => {
     const header = 'Line\tDesignator\tPart Number\tQty\tUnit Price\tExtended Price\tStatus\n';
@@ -55,6 +67,21 @@ export function ExportDropdown() {
 
       {isOpen && (
         <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-xl shadow-2xl bg-slate-900 border border-slate-700 divide-y divide-slate-800 focus:outline-none z-30 animate-in fade-in">
+          <div className="p-1">
+            <button
+              onClick={handleSupplierUpload}
+              className="group flex items-center gap-2.5 w-full px-3 py-2 text-xs text-slate-200 hover:bg-blue-600 hover:text-white rounded-lg transition"
+            >
+              <Upload className="w-4 h-4 text-cyan-400 group-hover:text-white" />
+              <div className="text-left">
+                <p className="font-medium">{label} BOM Upload (.csv)</p>
+                <p className="text-[10px] text-slate-400 group-hover:text-blue-100">
+                  Columns for the {uploadTool}
+                </p>
+              </div>
+            </button>
+          </div>
+
           <div className="p-1">
             <button
               onClick={() => {

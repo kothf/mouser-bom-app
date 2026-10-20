@@ -6,6 +6,7 @@ import {
   MouserPriceBreak,
 } from './types';
 import { globalMouserRateLimiter } from './rate-limiter';
+import { mountingScore } from '../mounting/mounting';
 
 const MOUSER_API_BASE = 'https://api.mouser.com/api/v1';
 
@@ -492,7 +493,11 @@ export function parseStockQuantity(
  * Avoids picking placeholder / non-orderable rows (e.g. MouserPartNumber "N/A" or 0-stock parent items)
  * when valid in-stock, orderable variants exist in the search results.
  */
-export function pickBestMatchedPart(parts: MouserPart[], queryPartNumber?: string): MouserPart | null {
+export function pickBestMatchedPart(
+  parts: MouserPart[],
+  queryPartNumber?: string,
+  wantSmd: boolean = false
+): MouserPart | null {
   if (!parts || parts.length === 0) return null;
   if (parts.length === 1) return parts[0];
 
@@ -525,6 +530,9 @@ export function pickBestMatchedPart(parts: MouserPart[], queryPartNumber?: strin
     if (p.DataSheetUrl) {
       score += 10;
     }
+
+    // Among variants of one part number, prefer the line's mounting (SMD or regular).
+    score += 150 * mountingScore(p, wantSmd);
 
     return score;
   };

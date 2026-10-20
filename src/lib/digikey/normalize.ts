@@ -59,6 +59,8 @@ export function normalizeDigiKeyProduct(product: DigiKeyProduct, currency: strin
   const description =
     product.Description?.ProductDescription || product.Description?.DetailedDescription || '';
 
+  const mountingType = product.Parameters?.find((p) => /mounting type/i.test(p.ParameterText || ''))?.ValueText;
+
   return {
     MouserPartNumber: variation?.DigiKeyProductNumber || '',
     ManufacturerPartNumber: product.ManufacturerProductNumber || '',
@@ -71,6 +73,7 @@ export function normalizeDigiKeyProduct(product: DigiKeyProduct, currency: strin
     ProductDetailUrl: product.ProductUrl || '',
     ImagePath: product.PhotoUrl || undefined,
     Category: product.Category?.Name || undefined,
+    MountingType: mountingType || undefined,
     LeadTime: product.ManufacturerLeadWeeks ? `${product.ManufacturerLeadWeeks} weeks` : undefined,
     LifecycleStatus: product.ProductStatus?.Status || undefined,
     ROHSStatus: product.Classifications?.RohsStatus || undefined,

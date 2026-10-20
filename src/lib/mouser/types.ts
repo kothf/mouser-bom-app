@@ -16,6 +16,8 @@ export interface MouserPart {
   FactoryStock: string;
   ImagePath?: string;
   Category?: string;
+  // "Surface Mount" / "Through Hole"; DigiKey's Mounting Type parameter.
+  MountingType?: string;
   LeadTime?: string;
   LifecycleStatus?: string;
   Manufacturer: string;
@@ -110,6 +112,10 @@ export interface BOMItem {
   // search query (e.g. "22uF 450V electrolytic Capacitor") instead of an MPN.
   searchMode?: 'partnumber' | 'keyword';
   category?: string;
+
+  // SMD/SMT line: search surface-mount parts. Unset means a regular
+  // (through-hole) part is wanted.
+  smd?: boolean;
 }
 
 export interface ColumnMapping {
