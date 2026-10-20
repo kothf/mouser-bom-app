@@ -19,7 +19,7 @@ docker compose pull && docker compose up -d
 
 On the NUC that serves aerocat.tech, `/bom` follows `main` instead: cron runs `deploy/nuc/auto-deploy.sh` every 5 minutes, and when `main` has moved it builds the image locally, restarts the container and checks it. The live commit is at `https://aerocat.tech/bom/version.txt`. Details, rollback and setup are in [deploy/nuc/README.md](deploy/nuc/README.md).
 
-Optional server-wide DigiKey credentials go in a `.env` file beside `docker-compose.yml` (`DIGIKEY_CLIENT_ID=...`, `DIGIKEY_CLIENT_SECRET=...`). Saved BOMs live in the `bom-data` volume. If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
+Optional server-wide DigiKey credentials go in a `.env` file beside `docker-compose.yml` (`DIGIKEY_CLIENT_ID=...`, `DIGIKEY_CLIENT_SECRET=...`). If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
 
 Releases are built by `.github/workflows/release.yml`: every merge to `main` whose `package.json` version has no release yet publishes `v<version>` automatically (pushing a `v*` tag or running the workflow manually works too). Bump the version to ship a new release.
 
@@ -28,7 +28,8 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 ## ⚡ Key Features
 
 ### 0. Mouser and DigiKey, kept apart
-- A **supplier switcher** at the top selects Mouser or DigiKey. Each supplier has its **own BOM**, own storage (`data/saved-bom.json` vs `data/saved-bom-digikey.json`) and own cart flow, so results are never mixed in one BOM.
+- A **supplier switcher** at the top selects Mouser or DigiKey. Each supplier has its **own BOM**, own browser storage and own cart flow, so results are never mixed in one BOM.
+- **BOMs stay in your browser.** They are saved only in this browser's `localStorage` and never sent to the server, so other visitors of a shared deployment cannot see them. A BOM does not follow you to another browser or device.
 - **DigiKey Product Information API v4**: part-number lookup (product details, falling back to exact keyword matches) and keyword search, with OAuth2 client-credentials tokens cached on the server and a rate limiter tuned for DigiKey's 120 requests/minute.
 - **DigiKey cart**: DigiKey has no public cart API comparable to Mouser's, so **Copy DigiKey Cart List** copies `Quantity, DigiKey Part Number, Customer Reference` lines and opens the DigiKey cart for pasting.
 

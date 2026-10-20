@@ -22,7 +22,7 @@ export function isSupplier(value: unknown): value is Supplier {
   return value === 'mouser' || value === 'digikey';
 }
 
-export type SupplierEndpoint = 'search/partnumber' | 'search/keyword' | 'bom/storage' | 'verify';
+export type SupplierEndpoint = 'search/partnumber' | 'search/keyword' | 'verify';
 
 export function supplierApiPath(supplier: Supplier, endpoint: SupplierEndpoint): string {
   return apiPath(`/api/${supplier}/${endpoint}`);
