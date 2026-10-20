@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { convertPartsToUsd } from '@/lib/currency/usd';
 import { mouserClient } from '@/lib/mouser/client';
 
 export async function POST(req: NextRequest) {
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
       Number(pageNumber) || 1
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, parts: await convertPartsToUsd(result.parts) });
   } catch (error: unknown) {
     console.error('Error in /api/mouser/search/keyword:', error);
     return NextResponse.json(

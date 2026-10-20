@@ -150,9 +150,10 @@ DIGIKEY_CLIENT_ID=your_client_id
 DIGIKEY_CLIENT_SECRET=your_client_secret
 # Optional: locale and sandbox
 # DIGIKEY_LOCALE_SITE=US
-# DIGIKEY_LOCALE_CURRENCY=USD
 # DIGIKEY_API_BASE=https://sandbox-api.digikey.com
 ```
+
+All prices are shown in USD. DigiKey is asked for USD directly; Mouser prices in another currency (set by the account behind the API key) are converted on the server with a daily reference rate from frankfurter.dev, falling back to open.er-api.com.
 
 DigiKey credentials can also be entered per browser in **Settings**; they are stored in `localStorage` and only sent to this app's own server, which exchanges them for an OAuth token. Never commit real keys.
 

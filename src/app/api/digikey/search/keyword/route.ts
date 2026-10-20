@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { convertPartsToUsd } from '@/lib/currency/usd';
 import { digikeyClient, resolveDigiKeyCredentials } from '@/lib/digikey/client';
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
       Number(pageNumber) || 1
     );
 
-    return NextResponse.json({ parts, totalResults, error });
+    return NextResponse.json({ parts: await convertPartsToUsd(parts), totalResults, error });
   } catch (error: unknown) {
     console.error('Error in /api/digikey/search/keyword:', error);
     return NextResponse.json(

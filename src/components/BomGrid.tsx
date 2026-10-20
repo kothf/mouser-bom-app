@@ -9,6 +9,7 @@ import {
   flexRender,
   createColumnHelper,
   SortingState,
+  RowSelectionState,
 } from '@tanstack/react-table';
 import {
   CheckCircle2,
@@ -53,6 +54,7 @@ export function BomGrid() {
     resolveProgress,
     updateItemQty,
     deleteItem,
+    deleteItems,
     clearBom,
     resolveAllItems,
     resolveSingleItem,
@@ -64,6 +66,7 @@ export function BomGrid() {
   const { searchApiKey, cartApiKey } = useSettingsStore();
 
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isPushingCart, setIsPushingCart] = useState(false);
@@ -182,9 +185,49 @@ export function BomGrid() {
     }
   };
 
+  const selectedIds = useMemo(
+    () => items.filter((i) => rowSelection[i.id]).map((i) => i.id),
+    [items, rowSelection]
+  );
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    const noun = selectedIds.length === 1 ? 'line' : 'lines';
+    if (window.confirm(`Delete ${selectedIds.length} selected ${noun} from the BOM?`)) {
+      deleteItems(selectedIds);
+      setRowSelection({});
+    }
+  };
+
   // Define Table Columns
   const columns = useMemo(
     () => [
+      // 0. Row selection
+      columnHelper.display({
+        id: 'select',
+        header: ({ table }) => (
+          <input
+            type="checkbox"
+            checked={table.getIsAllRowsSelected()}
+            ref={(el) => {
+              if (el) el.indeterminate = table.getIsSomeRowsSelected();
+            }}
+            onChange={table.getToggleAllRowsSelectedHandler()}
+            aria-label="Select all lines"
+            className="w-3.5 h-3.5 accent-blue-500 cursor-pointer align-middle"
+          />
+        ),
+        cell: ({ row }) => (
+          <input
+            type="checkbox"
+            checked={row.getIsSelected()}
+            onChange={row.getToggleSelectedHandler()}
+            aria-label={`Select line ${row.original.lineNumber}`}
+            className="w-3.5 h-3.5 accent-blue-500 cursor-pointer align-middle"
+          />
+        ),
+      }),
+
       // 1. Status Indicator
       columnHelper.accessor('status', {
         header: 'Status',
@@ -584,7 +627,11 @@ export function BomGrid() {
     state: {
       sorting,
       globalFilter,
+      rowSelection,
     },
+    getRowId: (row) => row.id,
+    enableRowSelection: true,
+    onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
@@ -752,6 +799,18 @@ export function BomGrid() {
             <span>{supplier === 'digikey' ? 'Copy DigiKey Cart List' : 'Export to Mouser Cart'}</span>
           </button>
 
+          {/* Delete selected lines */}
+          {selectedIds.length > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md shadow-rose-950 transition"
+              title="Delete the selected lines"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete selected ({selectedIds.length})</span>
+            </button>
+          )}
+
           {/* Clear BOM Button */}
           <button
             onClick={() => {
@@ -822,7 +881,9 @@ export function BomGrid() {
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="py-2.5 px-4 font-semibold whitespace-nowrap"
+                    className={`py-2.5 px-4 font-semibold whitespace-nowrap ${
+                      header.column.id === 'actions' ? 'sticky right-0 bg-slate-950 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.6)]' : ''
+                    }`}
                     aria-sort={
                       header.column.getIsSorted() === 'asc'
                         ? 'ascending'
@@ -857,9 +918,17 @@ export function BomGrid() {
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300 tabular">
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-800/40 transition">
+              <tr
+                key={row.id}
+                className={`transition ${row.getIsSelected() ? 'bg-blue-500/[0.08]' : 'hover:bg-slate-800/40'}`}
+              >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="py-3 px-4 align-top">
+                  <td
+                    key={cell.id}
+                    className={`py-3 px-4 align-top ${
+                      cell.column.id === 'actions' ? 'sticky right-0 bg-slate-900 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.6)]' : ''
+                    }`}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

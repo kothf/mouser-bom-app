@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { convertPartsToUsd } from '@/lib/currency/usd';
 import { mouserClient } from '@/lib/mouser/client';
 import { globalMouserRateLimiter } from '@/lib/mouser/rate-limiter';
 import { MouserPart } from '@/lib/mouser/types';
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
         const clean = String(pn || '').trim();
         if (!clean) return;
         const res = await mouserClient.searchByPartNumber(clean, headerKey, desc, desig);
-        results[clean] = res;
+        results[clean] = { ...res, parts: await convertPartsToUsd(res.parts) };
       }
     );
 

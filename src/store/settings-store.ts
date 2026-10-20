@@ -7,7 +7,6 @@ export interface DigiKeySettings {
   digikeyClientId: string;
   digikeyClientSecret: string;
   digikeyLocaleSite: string;
-  digikeyLocaleCurrency: string;
 }
 
 export interface SettingsState {
@@ -22,7 +21,6 @@ export interface SettingsState {
   digikeyClientId: string;
   digikeyClientSecret: string;
   digikeyLocaleSite: string;
-  digikeyLocaleCurrency: string;
 
   // CAD keyword import rules (empty string = built-in defaults)
   cadCategoriesText: string;
@@ -67,7 +65,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   digikeyClientId: '',
   digikeyClientSecret: '',
   digikeyLocaleSite: 'US',
-  digikeyLocaleCurrency: 'USD',
   cadCategoriesText: '',
   cadColumnsText: '',
 
@@ -148,7 +145,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       digikeyClientId: cleanCredential(settings.digikeyClientId),
       digikeyClientSecret: cleanCredential(settings.digikeyClientSecret),
       digikeyLocaleSite: cleanCredential(settings.digikeyLocaleSite).toUpperCase() || 'US',
-      digikeyLocaleCurrency: cleanCredential(settings.digikeyLocaleCurrency).toUpperCase() || 'USD',
     };
     set(clean);
     mergeIntoStorage({ ...clean });
@@ -173,7 +169,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
           digikeyClientId: cleanCredential(parsed.digikeyClientId),
           digikeyClientSecret: cleanCredential(parsed.digikeyClientSecret),
           digikeyLocaleSite: cleanCredential(parsed.digikeyLocaleSite) || 'US',
-          digikeyLocaleCurrency: cleanCredential(parsed.digikeyLocaleCurrency) || 'USD',
           cadCategoriesText: typeof parsed.cadCategoriesText === 'string' ? parsed.cadCategoriesText : '',
           cadColumnsText: typeof parsed.cadColumnsText === 'string' ? parsed.cadColumnsText : '',
         });
@@ -226,7 +221,6 @@ export function getSupplierSearchHeaders(
       headers['x-digikey-client-secret'] = clientSecret;
     }
     headers['x-digikey-locale-site'] = state.digikeyLocaleSite || stored.digikeyLocaleSite || 'US';
-    headers['x-digikey-locale-currency'] = state.digikeyLocaleCurrency || stored.digikeyLocaleCurrency || 'USD';
     return { headers, hasCredentials: Boolean(clientId && clientSecret) };
   }
 
