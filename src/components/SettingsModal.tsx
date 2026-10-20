@@ -35,7 +35,6 @@ function SettingsDialog() {
     digikeyClientId,
     digikeyClientSecret,
     digikeyLocaleSite,
-    digikeyLocaleCurrency,
     saveSettings,
     saveDigiKeySettings,
     setIsSettingsOpen,
@@ -59,7 +58,6 @@ function SettingsDialog() {
   const [dkClientId, setDkClientId] = useState(digikeyClientId);
   const [dkClientSecret, setDkClientSecret] = useState(digikeyClientSecret);
   const [dkSite, setDkSite] = useState(digikeyLocaleSite || 'US');
-  const [dkCurrency, setDkCurrency] = useState(digikeyLocaleCurrency || 'USD');
   const [showDkSecret, setShowDkSecret] = useState(false);
   const [testingDigiKey, setTestingDigiKey] = useState(false);
   const [dkTestResult, setDkTestResult] = useState<{ valid: boolean; message: string } | null>(null);
@@ -67,15 +65,13 @@ function SettingsDialog() {
   const digikeyChanged =
     dkClientId.trim() !== digikeyClientId ||
     dkClientSecret.trim() !== digikeyClientSecret ||
-    dkSite.trim().toUpperCase() !== digikeyLocaleSite ||
-    dkCurrency.trim().toUpperCase() !== digikeyLocaleCurrency;
+    dkSite.trim().toUpperCase() !== digikeyLocaleSite;
 
   const saveDigiKey = () => {
     saveDigiKeySettings({
       digikeyClientId: dkClientId,
       digikeyClientSecret: dkClientSecret,
       digikeyLocaleSite: dkSite,
-      digikeyLocaleCurrency: dkCurrency,
     });
     const digikeyBom = getBomStore('digikey').getState();
     if (digikeyBom.items.length > 0) {
@@ -91,8 +87,7 @@ function SettingsDialog() {
         digikeyClientId: dkClientId,
         digikeyClientSecret: dkClientSecret,
         digikeyLocaleSite: dkSite,
-        digikeyLocaleCurrency: dkCurrency,
-      });
+        });
       const { headers } = getSupplierSearchHeaders('digikey');
       const res = await fetch(supplierApiPath('digikey', 'verify'), { method: 'POST', headers });
       const data = await res.json();
@@ -401,17 +396,7 @@ function SettingsDialog() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono uppercase"
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-slate-400">Currency</label>
-                <input
-                  type="text"
-                  maxLength={3}
-                  value={dkCurrency}
-                  onChange={(e) => setDkCurrency(e.target.value.toUpperCase())}
-                  placeholder="USD"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono uppercase"
-                />
-              </div>
+              <p className="self-end pb-2 text-xs text-slate-500">Prices are always in USD.</p>
             </div>
             <div className="flex items-center justify-between pt-1">
               <button

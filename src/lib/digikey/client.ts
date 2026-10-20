@@ -57,8 +57,8 @@ export function resolveDigiKeyCredentials(headers: Headers): DigiKeyCredentials 
     clientSecret: useHeaders ? headerSecret : cleanCredential(process.env.DIGIKEY_CLIENT_SECRET),
     localeSite:
       cleanCredential(headers.get('x-digikey-locale-site')) || process.env.DIGIKEY_LOCALE_SITE || 'US',
-    localeCurrency:
-      cleanCredential(headers.get('x-digikey-locale-currency')) || process.env.DIGIKEY_LOCALE_CURRENCY || 'USD',
+    // Prices are always shown in USD.
+    localeCurrency: 'USD',
     localeLanguage: process.env.DIGIKEY_LOCALE_LANGUAGE || 'en',
   };
 }

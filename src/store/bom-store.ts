@@ -27,6 +27,7 @@ export interface BomState {
   addItem: (item: Partial<BOMItem>) => void;
   updateItemQty: (id: string, newQty: number) => void;
   deleteItem: (id: string) => void;
+  deleteItems: (ids: string[]) => void;
   clearBom: () => void;
   replaceItemPart: (id: string, newPart: MouserPart) => void;
   setSelectedForReplace: (item: BOMItem | null) => void;
@@ -352,9 +353,13 @@ function createBomStore(supplier: Supplier) {
     },
 
     deleteItem: (id: string) => {
-      const current = get().items;
-      const updated = current
-        .filter((i) => i.id !== id)
+      get().deleteItems([id]);
+    },
+
+    deleteItems: (ids: string[]) => {
+      const remove = new Set(ids);
+      const updated = get()
+        .items.filter((i) => !remove.has(i.id))
         .map((item, idx) => ({ ...item, lineNumber: idx + 1 }));
 
       set({ items: updated });
