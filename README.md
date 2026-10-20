@@ -34,10 +34,14 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 
 ### 0b. Tube Amp CAD import by keywords
 - The **Tube Amp CAD (Keywords)** tab reads BOM exports that list components by type and value instead of part numbers, e.g. `C1, Cap, 22uF, 450V, electrolytic`, `R1-R4 Res 100k 1W`, `V1 Tube 12AX7`.
-- Works with CSV, TSV, semicolon-separated, plain text and Excel exports, with or without a header row (`Ref`, `Type`, `Value`, `Voltage`, `Power`, `Qty`, `Description`).
-- Recognises capacitance (`22uF`, `4n7`, `0.1µF`), resistance (`100k`, `4k7`, `470R`, `1M5`), inductance (`5H`), voltage (`450V`), power (`1W`, `1/2W`), tolerance, designator ranges (`R1-R4`) and quantity markers (`x4`, `qty 2`).
-- Identical components are merged and quantities summed. Each line becomes a keyword search on the selected supplier, and the best in-stock match is picked (shown with a "Keyword" tag so it can be reviewed or replaced).
-- **Keywords are configurable** under *Edit keywords*: `Category: keyword, keyword | designator prefixes` (defaults: Cap/Capacitor/Elko → Capacitor, Res/Resistor → Resistor, Pot → Potentiometer, Tube/Valve → Vacuum Tube, Diode, Choke, Transformer, Socket, Fuse, Switch, Jack, LED) plus the column header names. Rules are saved in the browser.
+- Works with CSV, TSV, semicolon-separated, plain text and Excel exports, with or without a header row (`Ref`/`Designators`, `Type`, `Value`, `Rating / data`, `Voltage`, `Power`, `Qty`, `Description`).
+- **Fixed-width text tables** (columns padded with spaces and a `---- ---` ruler under the header, as in the GUB-245-01 BOM export) are cut by column, so commas inside cells like `C7, C8` or `Capacitor, electrolytic` don't split them. Tab-aligned tables work too.
+- **Title lines above the table** (`BILL OF MATERIALS`, project name, revision...) are skipped: the header row is found within the first 10 lines.
+- **Ratings come from the `Rating / data` column** (also `Rating`, `Data`, `Spec`): for capacitors, resistors and pots its voltage, wattage, tolerance and type words go into the search query, e.g. `400 V` → `6.8uF 400V Capacitor`, `5 W` → `180 Ohm 5W Resistor`. A bare number is volts for a capacitor and watts for a resistor. Other columns such as `Sim. max` are ignored.
+- With a `Value` column, tubes, transformers, sockets and speakers search by that cell (`6P14P Vacuum Tube`, `Hammond 373BX Transformer`, `4 Ohm Loudspeaker`).
+- Recognises capacitance (`22uF`, `4n7`, `0.1µF`), resistance (`100k`, `4k7`, `470R`, `1M5`, `10kΩ`), inductance (`5H`), voltage (`450V`, `630 V`), power (`1W`, `1/2W`, `0.25 W`), tolerance, designator ranges (`R1-R4`) and quantity markers (`x4`, `qty 2`).
+- Identical components are merged and quantities summed. Each line becomes a keyword search on the selected supplier, and the best in-stock match is picked (shown with a "Keyword" tag so it can be reviewed or replaced). Lines that can't be classified are listed as skipped.
+- **Keywords are configurable** under *Edit keywords*: `Category: keyword, keyword | designator prefixes` (defaults: Cap/Capacitor/Elko → Capacitor, Res/Resistor → Resistor, Pot → Potentiometer, Tube/Valve/Vacuum tube → Vacuum Tube, Socket → Tube Socket, Diode, Choke, Transformer, Fuse, Switch, Jack, LED, Loudspeaker/Speaker (BA, LS, SPK)) plus the column header names. Rules are saved in the browser.
 
 ### 1. Multi-Format BOM Ingestion & Smart Mapping
 - **File Formats Supported**: Microsoft Excel (`.xlsx`, `.xls`), CSV (`.csv`), TSV (`.tsv`), and plain text (`.txt`).
@@ -174,7 +178,7 @@ npm run start -p 3000
 ```bash
 npm run lint
 npm run typecheck
-npm test        # vitest unit tests (CAD keyword parser, DigiKey normalisation)
+npm test        # vitest unit tests (CAD keyword parser incl. a real GUB-245-01 BOM fixture, DigiKey normalisation)
 ```
 
 ---
@@ -188,4 +192,5 @@ npm test        # vitest unit tests (CAD keyword parser, DigiKey normalisation)
    - Adjust quantities directly in the **Req Qty** input to watch unit price update dynamically based on manufacturer price tiers.
 4. **Replace / Search Alternates**: Click the refresh icon on any row to search for pin-compatible alternatives and substitute them in one click.
 5. **Export to Mouser Cart**: Click **"Export to Mouser Cart"** to push parts to the Mouser Cart API. Copy the Cart Key or click **"Open Cart on Mouser.com"** to complete checkout.
-6. **Download Enriched BOM**: Click **"Download Enriched BOM"** to save the fully calculated BOM as an Excel `.xlsx` or `.csv`.
+6. **Tube amp CAD BOM**: on the **Tube Amp CAD (keywords)** tab, click **Load file** (or paste), check the preview of categories, quantities and search queries, then **Import & search** on the selected supplier.
+7. **Download Enriched BOM**: Click **"Download Enriched BOM"** to save the fully calculated BOM as an Excel `.xlsx` or `.csv`.
