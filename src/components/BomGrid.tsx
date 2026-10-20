@@ -881,8 +881,8 @@ export function BomGrid() {
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className={`py-2.5 px-4 font-semibold whitespace-nowrap ${
-                      header.column.id === 'actions' ? 'sticky right-0 bg-slate-950 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.6)]' : ''
+                    className={`py-2.5 font-semibold whitespace-nowrap ${
+                      header.column.id === 'select' ? 'pl-4 pr-1 w-8' : 'px-3'
                     }`}
                     aria-sort={
                       header.column.getIsSorted() === 'asc'
@@ -925,9 +925,7 @@ export function BomGrid() {
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
-                    className={`py-3 px-4 align-top ${
-                      cell.column.id === 'actions' ? 'sticky right-0 bg-slate-900 shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.6)]' : ''
-                    }`}
+                    className={`py-3 align-top ${cell.column.id === 'select' ? 'pl-4 pr-1 w-8' : 'px-3'}`}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
