@@ -20,7 +20,7 @@ import {
   isUsd,
   partNeedsUsd,
 } from '@/lib/currency/convert';
-import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
+import { missingCredentialsMessage, searchHeadersIfConnected, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
 
 export interface ResolveProgress {
@@ -294,16 +294,15 @@ export async function queryAndMatchSingleItem(
 }
 
 /**
- * Resolve search credentials before a lookup. Mouser needs a key in the
- * browser; DigiKey may also use credentials configured on the server, so a
- * missing browser credential does not block it.
+ * Resolve search credentials before a lookup. Both suppliers use only the
+ * user's own credentials from the browser; without them, Settings opens
+ * instead of failing every line.
  */
 function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Record<string, string> | null {
-  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitKey);
-  if (supplier === 'mouser' && !hasCredentials) {
+  const headers = searchHeadersIfConnected(supplier, explicitKey);
+  if (!headers) {
     useSettingsStore.getState().setIsSettingsOpen(true);
-    alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
-    return null;
+    alert(missingCredentialsMessage(supplier));
   }
   return headers;
 }

@@ -177,6 +177,8 @@ function isHeaderRowText(line: string): boolean {
     'mouser part',
     'mouser #',
     'mouser pn',
+    'digi-key part',
+    'digikey part',
     'mfr part',
     'manufacturer part',
     'mpn',
@@ -194,7 +196,7 @@ function isHeaderRowText(line: string): boolean {
   for (const kw of headerKeywords) {
     if (norm.includes(kw)) matches++;
   }
-  return matches >= 2 || (matches >= 1 && /^(mouser\s*part|part\s*(number|#|no)?|mpn)/i.test(line.trim()));
+  return matches >= 2 || (matches >= 1 && /^(mouser\s*part|digi-?key\s*part|part\s*(number|#|no)?|mpn)/i.test(line.trim()));
 }
 
 export function parseTextContent(text: string, fileName: string = 'pasted_bom.txt'): ParsedRawFile {
@@ -305,7 +307,7 @@ export function buildBomItemsFromRows(
       if (!rawPn) return null;
 
       // Ensure header rows are never accidentally imported as parts
-      const isHeaderName = /^(mouser\s*part(\s*number|\s*#|\s*no)?|manufacturer\s*part(\s*number|\s*#|\s*no)?|part(\s*number|\s*#|\s*no)?|mpn|mfr\s*part|component|item\s*#|customer\s*part(\s*number|\s*#|\s*no)?)$/i.test(
+      const isHeaderName = /^((mouser|digi-?key)\s*part(\s*number|\s*#|\s*no)?|manufacturer\s*part(\s*number|\s*#|\s*no)?|part(\s*number|\s*#|\s*no)?|mpn|mfr\s*part|component|item\s*#|customer\s*part(\s*number|\s*#|\s*no)?)$/i.test(
         rawPn.trim()
       );
       if (isHeaderName) return null;

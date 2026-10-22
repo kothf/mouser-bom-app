@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
 import { Supplier } from '@/lib/supplier';
 
@@ -75,11 +74,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, searchApiKey: clean }));
     } catch {}
-    fetch(apiPath('/api/mouser/settings'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ searchApiKey: clean }),
-    }).catch(() => {});
   },
 
   setCartApiKey: (key: string) => {
@@ -89,11 +83,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, cartApiKey: clean }));
     } catch {}
-    fetch(apiPath('/api/mouser/settings'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cartApiKey: clean }),
-    }).catch(() => {});
   },
 
   setRateLimitDelayMs: (ms: number) => {
@@ -125,19 +114,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...cleanSettings }));
     } catch {}
-
-    try {
-      await fetch(apiPath('/api/mouser/settings'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          searchApiKey: cleanSettings.searchApiKey,
-          cartApiKey: cleanSettings.cartApiKey,
-        }),
-      });
-    } catch (e) {
-      console.warn('Failed to save settings to server:', e);
-    }
   },
 
   saveDigiKeySettings: (settings: DigiKeySettings) => {
@@ -174,18 +150,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         });
       }
       set({ settingsLoaded: true });
-
-      // Also sync from server if configured
-      const res = await fetch(apiPath('/api/mouser/settings'));
-      if (res.ok) {
-        const serverData = await res.json();
-        set((state) => ({
-          searchApiKey: state.searchApiKey || serverData.searchApiKey || '',
-          cartApiKey: state.cartApiKey || serverData.cartApiKey || '',
-        }));
-      }
     } catch (e) {
-      console.warn('Failed to load settings from storage/server', e);
+      console.warn('Failed to load settings from browser storage', e);
       set({ settingsLoaded: true });
     }
   },
@@ -202,8 +168,7 @@ function readStoredSettings(): Record<string, string | undefined> {
 
 /**
  * Request headers carrying the user's own credentials for a supplier's search
- * API. `hasCredentials` is false when the browser holds none (the server may
- * still have its own from environment variables).
+ * API. `hasCredentials` is false when the browser holds none.
  */
 export function getSupplierSearchHeaders(
   supplier: Supplier,
@@ -228,4 +193,30 @@ export function getSupplierSearchHeaders(
     explicitMouserKey?.trim() || state.searchApiKey?.trim() || sanitizeApiKey(stored.searchApiKey || '');
   if (key) headers['x-mouser-search-key'] = key;
   return { headers, hasCredentials: Boolean(key) };
+}
+
+/** True when the browser holds search credentials for a supplier. */
+export function useSupplierConnected(supplier: Supplier): boolean {
+  return useSettingsStore((s) =>
+    supplier === 'digikey' ? Boolean(s.digikeyClientId && s.digikeyClientSecret) : Boolean(s.searchApiKey?.trim())
+  );
+}
+
+/** Message shown when a supplier has no search credentials. */
+export function missingCredentialsMessage(supplier: Supplier): string {
+  return supplier === 'digikey'
+    ? 'DigiKey Client ID and Client Secret are not configured. Please open Settings to enter them.'
+    : 'Mouser Search API Key is not configured. Please open Settings to enter your key.';
+}
+
+/**
+ * Search headers for a supplier, or null when the browser has no credentials
+ * for it. Keys live only in the visitor's browser; the server holds none.
+ */
+export function searchHeadersIfConnected(
+  supplier: Supplier,
+  explicitMouserKey?: string
+): Record<string, string> | null {
+  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitMouserKey);
+  return hasCredentials ? headers : null;
 }

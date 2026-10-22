@@ -7,13 +7,14 @@ import {
   DigiKeyProductDetailsResponse,
 } from './types';
 import { normalizeDigiKeyProduct } from './normalize';
+import { withoutDistributorPrefix } from '../part-number';
 
 /**
  * DigiKey Product Information API v4 client (server-side only).
  *
- * Credentials come from the request headers (the user's own Client ID/Secret
- * saved in the browser) or from the DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET
- * environment variables. They are never written to disk or returned to clients.
+ * Credentials come only from the request headers (the user's own Client
+ * ID/Secret saved in their browser); the server holds none. They are never
+ * written to disk or returned to clients.
  */
 
 const DEFAULT_API_BASE = 'https://api.digikey.com';
@@ -45,16 +46,12 @@ function cleanCredential(raw: string | null | undefined): string {
 }
 
 /**
- * Resolve credentials from request headers with environment fallback.
+ * Resolve credentials from the request headers.
  */
 export function resolveDigiKeyCredentials(headers: Headers): DigiKeyCredentials {
-  const headerId = cleanCredential(headers.get('x-digikey-client-id'));
-  const headerSecret = cleanCredential(headers.get('x-digikey-client-secret'));
-  const useHeaders = Boolean(headerId && headerSecret);
-
   return {
-    clientId: useHeaders ? headerId : cleanCredential(process.env.DIGIKEY_CLIENT_ID),
-    clientSecret: useHeaders ? headerSecret : cleanCredential(process.env.DIGIKEY_CLIENT_SECRET),
+    clientId: cleanCredential(headers.get('x-digikey-client-id')),
+    clientSecret: cleanCredential(headers.get('x-digikey-client-secret')),
     localeSite:
       cleanCredential(headers.get('x-digikey-locale-site')) || process.env.DIGIKEY_LOCALE_SITE || 'US',
     // Prices are always shown in USD.
@@ -64,7 +61,7 @@ export function resolveDigiKeyCredentials(headers: Headers): DigiKeyCredentials 
 }
 
 function missingCredentialsError(): string {
-  return 'DigiKey Client ID and Client Secret are not configured. Add them in Settings or set DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET on the server.';
+  return 'DigiKey Client ID and Client Secret are not configured. Please add them in Settings.';
 }
 
 function extractErrorMessage(data: unknown, status: number): string {
@@ -225,33 +222,40 @@ export class DigiKeyClient {
       return { parts: [], error: missingCredentialsError() };
     }
 
-    try {
-      const { data } = await digikeyRequest<DigiKeyProductDetailsResponse>(
-        creds,
-        `/products/v4/search/${encodeURIComponent(clean)}/productdetails`,
-        { method: 'GET' }
-      );
+    // Like Mouser: when the part number as written finds nothing exact, try it
+    // without a distributor prefix (Mouser "80-C4AF3BW4470A3FK" -> "C4AF3BW4470A3FK").
+    const stripped = withoutDistributorPrefix(clean);
+    let firstKeywordParts: MouserPart[] = [];
+    for (const candidate of stripped ? [clean, stripped] : [clean]) {
+      try {
+        const { data } = await digikeyRequest<DigiKeyProductDetailsResponse>(
+          creds,
+          `/products/v4/search/${encodeURIComponent(candidate)}/productdetails`,
+          { method: 'GET' }
+        );
 
-      if (data?.Product) {
-        return { parts: [normalizeDigiKeyProduct(data.Product, creds.localeCurrency || 'USD')] };
+        if (data?.Product) {
+          return { parts: [normalizeDigiKeyProduct(data.Product, creds.localeCurrency || 'USD')] };
+        }
+      } catch (err: unknown) {
+        const errMsg = (err as Error).message || 'DigiKey part search failed';
+        if (/authoriz|client id|secret|429/i.test(errMsg)) {
+          console.warn(`[DigiKeyClient] Part search failed for "${candidate}":`, errMsg);
+          return { parts: [], error: errMsg };
+        }
+        // Other errors (e.g. ambiguous part number) fall through to keyword search.
       }
-    } catch (err: unknown) {
-      const errMsg = (err as Error).message || 'DigiKey part search failed';
-      if (/authoriz|client id|secret|429/i.test(errMsg)) {
-        console.warn(`[DigiKeyClient] Part search failed for "${clean}":`, errMsg);
-        return { parts: [], error: errMsg };
-      }
-      // Other errors (e.g. ambiguous part number) fall through to keyword search.
+
+      const keywordResult = await this.searchByKeyword(candidate, creds, 10, 1);
+      if (keywordResult.error) return { parts: [], error: keywordResult.error };
+      if (keywordResult.exactMatches.length > 0) return { parts: keywordResult.exactMatches };
+      if (candidate === clean) firstKeywordParts = keywordResult.parts;
     }
 
-    const keywordResult = await this.searchByKeyword(clean, creds, 10, 1);
-    if (keywordResult.error) return { parts: [], error: keywordResult.error };
-
-    const parts = keywordResult.exactMatches.length > 0 ? keywordResult.exactMatches : keywordResult.parts;
-    if (parts.length === 0) {
+    if (firstKeywordParts.length === 0) {
       return { parts: [], error: `Part "${clean}" not found in DigiKey catalog.` };
     }
-    return { parts };
+    return { parts: firstKeywordParts };
   }
 
   public async verifyCredentials(creds: DigiKeyCredentials): Promise<{ valid: boolean; message: string }> {

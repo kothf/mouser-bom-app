@@ -1,19 +1,39 @@
 import { ColumnMapping } from '../mouser/types';
+import { SUPPLIERS, Supplier } from '../supplier';
 
 /**
  * Intelligent Column Detection for Electronics Bills of Materials (BOM)
  */
 
-const PART_NUMBER_ALIASES = [
-  'mouserpartnumber',
-  'mouser_part_number',
-  'mouser_pn',
-  'mouserpart#',
-  'mouser#',
+// Part number columns, in the order they are preferred. The active
+// supplier's own part number wins, then the manufacturer part number;
+// the other supplier's part number is only used when nothing else fits.
+const SUPPLIER_PN_ALIASES: Record<Supplier, string[]> = {
+  mouser: ['mouserpartnumber', 'mouserpartno', 'mouserpart', 'mouserpn', 'mouser', 'mouserno'],
+  digikey: [
+    'digikeypartnumber',
+    'digikeypartno',
+    'digikeypart',
+    'digikeypn',
+    'digikey',
+    'digikeyproductnumber',
+    'dkpartnumber',
+    'dkpn',
+  ],
+};
+
+const MPN_ALIASES = [
+  'manufacturerpartnumber',
+  'manufacturerpartno',
+  'manufacturerpn',
   'mfrpartnumber',
-  'mfr_part_number',
-  'mfr_pn',
+  'mfrpartno',
+  'mfrpart',
+  'mfrpn',
   'mpn',
+];
+
+const PART_NUMBER_ALIASES = [
   'partnumber',
   'part_number',
   'part_no',
@@ -75,39 +95,26 @@ function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-export function detectColumnMapping(headers: string[]): ColumnMapping {
-  let partNumberCol = '';
-  let quantityCol = '';
-  let designatorCol = '';
-  let descriptionCol = '';
+function findColumn(headers: string[], aliases: string[]): string {
+  const wanted = new Set(aliases.map(normalizeHeader));
+  return headers.find((h) => wanted.has(normalizeHeader(h))) || '';
+}
 
-  for (const header of headers) {
-    const norm = normalizeHeader(header);
-
-    if (!partNumberCol) {
-      if (PART_NUMBER_ALIASES.includes(norm)) {
-        partNumberCol = header;
-      }
-    }
-
-    if (!quantityCol) {
-      if (QUANTITY_ALIASES.includes(norm)) {
-        quantityCol = header;
-      }
-    }
-
-    if (!designatorCol) {
-      if (DESIGNATOR_ALIASES.includes(norm)) {
-        designatorCol = header;
-      }
-    }
-
-    if (!descriptionCol) {
-      if (DESCRIPTION_ALIASES.includes(norm)) {
-        descriptionCol = header;
-      }
-    }
+/** The part number column for a supplier's BOM (see the alias order above). */
+function detectPartNumberColumn(headers: string[], supplier: Supplier): string {
+  const others = SUPPLIERS.filter((s) => s !== supplier).flatMap((s) => SUPPLIER_PN_ALIASES[s]);
+  for (const aliases of [SUPPLIER_PN_ALIASES[supplier], MPN_ALIASES, PART_NUMBER_ALIASES, others]) {
+    const col = findColumn(headers, aliases);
+    if (col) return col;
   }
+  return '';
+}
+
+export function detectColumnMapping(headers: string[], supplier: Supplier = 'mouser'): ColumnMapping {
+  let partNumberCol = detectPartNumberColumn(headers, supplier);
+  let quantityCol = findColumn(headers, QUANTITY_ALIASES);
+  let designatorCol = findColumn(headers, DESIGNATOR_ALIASES);
+  const descriptionCol = findColumn(headers, DESCRIPTION_ALIASES);
 
   // Fallback defaults if exact alias match was not found
   if (!partNumberCol && headers.length > 0) {

@@ -2,34 +2,13 @@
 
 import React from 'react';
 import { AlertCircle, Key } from 'lucide-react';
-import { useSettingsStore } from '@/store/settings-store';
+import { useSettingsStore, useSupplierConnected } from '@/store/settings-store';
 import { useBomStore } from '@/store/bom-store';
-import { supplierApiPath } from '@/lib/supplier';
 
 export function ApiKeyBanner() {
   const { supplier } = useBomStore();
-  const { searchApiKey, digikeyClientId, digikeyClientSecret, settingsLoaded, setIsSettingsOpen } =
-    useSettingsStore();
-  const [digikeyServerConfigured, setDigikeyServerConfigured] = React.useState(false);
-
-  React.useEffect(() => {
-    if (supplier !== 'digikey') return;
-    let cancelled = false;
-    fetch(supplierApiPath('digikey', 'verify'))
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setDigikeyServerConfigured(Boolean(data.serverConfigured));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [supplier]);
-
-  const hasKey =
-    supplier === 'digikey'
-      ? Boolean(digikeyClientId && digikeyClientSecret) || digikeyServerConfigured
-      : Boolean(searchApiKey?.trim());
+  const { settingsLoaded, setIsSettingsOpen } = useSettingsStore();
+  const hasKey = useSupplierConnected(supplier);
 
   // Wait until saved settings are read, and hide when credentials exist
   if (!settingsLoaded || hasKey) {
