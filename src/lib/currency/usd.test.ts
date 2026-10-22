@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { convertPartsToUsd, resetUsdRatesCache } from './usd';
+import { convertCartToUsd, convertPartsToUsd, resetUsdRatesCache } from './usd';
 import { MouserPart } from '@/lib/mouser/types';
 
 function part(breaks: { Quantity: number; Price: string; Currency: string }[]): MouserPart {
@@ -48,9 +48,60 @@ describe('convertPartsToUsd', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the original price when no rates are reachable', async () => {
+  it('tries the currency-api sources, which use lower-case codes', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('down', { status: 503 }))
+      .mockResolvedValueOnce(new Response('down', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ usd: { ils: 4 } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '₪8.00', Currency: 'ILS' }])]);
+    expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$2.00', Currency: 'USD' });
+  });
+
+  it('hides prices it cannot convert instead of showing another currency', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
-    const parts = [part([{ Quantity: 1, Price: '1,20 €', Currency: 'EUR' }])];
-    expect(await convertPartsToUsd(parts)).toEqual(parts);
+    const [p] = await convertPartsToUsd([
+      part([
+        { Quantity: 1, Price: '$1.00', Currency: 'USD' },
+        { Quantity: 10, Price: '1,20 €', Currency: 'EUR' },
+      ]),
+    ]);
+    expect(p.PriceBreaks).toEqual([{ Quantity: 1, Price: '$1.00', Currency: 'USD' }]);
+  });
+
+  it('keeps using the last live rates when the sources go down', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ rates: { EUR: 0.5 } }), { status: 200 }))
+      .mockResolvedValue(new Response('down', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      await convertPartsToUsd([part([{ Quantity: 1, Price: '1,00 €', Currency: 'EUR' }])]);
+      vi.advanceTimersByTime(7 * 60 * 60 * 1000);
+      const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '2,00 €', Currency: 'EUR' }])]);
+      expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$4.00', Currency: 'USD' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('convertCartToUsd', () => {
+  it('converts the cart total and line prices', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ rates: { EUR: 0.5 } }), { status: 200 }))
+    );
+    const cart = await convertCartToUsd({
+      CartKey: 'k',
+      CurrencyCode: 'EUR',
+      Total: 5,
+      CartItems: [{ MouserPartNumber: 'A', Quantity: 2, UnitPrice: 2.5, ExtendedPrice: 5 }],
+    });
+    expect(cart.CurrencyCode).toBe('USD');
+    expect(cart.Total).toBe(10);
+    expect(cart.CartItems?.[0]).toMatchObject({ UnitPrice: 5, ExtendedPrice: 10 });
   });
 });
