@@ -18,6 +18,7 @@ import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-sto
 import { parseStockQuantity, calculateTierPrice } from '@/lib/mouser/client';
 import { formatCurrency } from '@/lib/utils';
 import { SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+import { mountingKeyword, partMounting } from '@/lib/mounting/mounting';
 
 export function ManualSearchModal() {
   const { supplier, isManualSearchOpen, setIsManualSearchOpen, addItem, items } = useBomStore();
@@ -33,6 +34,8 @@ export function ManualSearchModal() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [designators, setDesignators] = useState<Record<string, string>>({});
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Same meaning as the SMD box on a BOM line: unticked = through-hole only.
+  const [smd, setSmd] = useState(false);
 
   // Manual entry fields
   const [manualPartNumber, setManualPartNumber] = useState('');
@@ -41,6 +44,22 @@ export function ManualSearchModal() {
   const [manualNotes, setManualNotes] = useState('');
 
   if (!isManualSearchOpen) return null;
+
+  const smdCheckbox = (
+    <label
+      className="flex items-center gap-1.5 cursor-pointer select-none"
+      title="Search a surface-mount (SMD/SMT) part for this line. Unticked lines get regular through-hole parts."
+    >
+      <input
+        type="checkbox"
+        checked={smd}
+        onChange={(e) => setSmd(e.target.checked)}
+        className="accent-cyan-500 cursor-pointer"
+        aria-label="SMD/SMT part"
+      />
+      <span className={smd ? 'text-cyan-300 font-semibold' : ''}>SMD</span>
+    </label>
+  );
 
   const handleManualAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +71,7 @@ export function ManualSearchModal() {
       designator: manualDesignator.trim() || `Line ${items.length + 1}`,
       notes: manualNotes.trim() || undefined,
       isCustomPart: true,
+      smd,
     });
 
     setManualPartNumber('');
@@ -83,22 +103,34 @@ export function ManualSearchModal() {
         searchMode === 'partnumber' ? 'search/partnumber' : 'search/keyword'
       );
 
-      const payload =
-        searchMode === 'partnumber'
-          ? { partNumber: query.trim() }
-          : { keyword: query.trim(), records: 20 };
+      const search = async (payload: object) => {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: Failed to search`);
+        }
+        return res.json();
+      };
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: Failed to search`);
+      let data;
+      if (searchMode === 'partnumber') {
+        data = await search({ partNumber: query.trim() });
+      } else {
+        // Keyword search follows the SMD box like a BOM line does: add the
+        // mounting word, fall back to the plain query, and hide the other mounting.
+        const hint = mountingKeyword(supplier, smd);
+        if (hint) data = await search({ keyword: `${query.trim()} ${hint}`, records: 20 });
+        if (!data?.parts?.length) data = await search({ keyword: query.trim(), records: 20 });
+        if (data.parts) {
+          data.parts = (data.parts as MouserPart[]).filter(
+            (p) => partMounting(p) !== (smd ? 'tht' : 'smd')
+          );
+        }
       }
 
-      const data = await res.json();
       if (data.error && (!data.parts || data.parts.length === 0)) {
         setErrorMsg(data.error);
         setResults([]);
@@ -124,6 +156,7 @@ export function ManualSearchModal() {
       notes: part.Description,
       matchedPart: part,
       isCustomPart: true,
+      smd,
     });
 
     // Reset designator for this part
@@ -243,6 +276,8 @@ export function ManualSearchModal() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
+
+              <div className="sm:col-span-2 text-xs text-slate-300">{smdCheckbox}</div>
             </div>
 
             <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
@@ -294,7 +329,7 @@ export function ManualSearchModal() {
             </button>
           </form>
 
-          <div className="flex items-center gap-4 text-xs text-slate-400">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
             <span className="text-slate-500">Search mode:</span>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -316,6 +351,8 @@ export function ManualSearchModal() {
               />
               <span>Exact Part # (MPN)</span>
             </label>
+            <span className="text-slate-700">|</span>
+            {smdCheckbox}
           </div>
         </div>
 
@@ -351,6 +388,7 @@ export function ManualSearchModal() {
                     designator: `Line ${items.length + 1}`,
                     notes: 'Manual entry',
                     isCustomPart: true,
+                    smd,
                   });
                   setIsManualSearchOpen(false);
                 }}
@@ -374,6 +412,7 @@ export function ManualSearchModal() {
                     designator: `Line ${items.length + 1}`,
                     notes: 'Manual entry',
                     isCustomPart: true,
+                    smd,
                   });
                   setIsManualSearchOpen(false);
                 }}
