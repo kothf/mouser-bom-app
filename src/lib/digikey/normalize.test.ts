@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeDigiKeyProduct, pickDigiKeyVariation } from './normalize';
+import { isMarketPlaceOnly, normalizeDigiKeyProduct, pickDigiKeyVariation } from './normalize';
 import { calculateTierPrice, parseStockQuantity } from '../mouser/client';
 import type { DigiKeyProduct } from './types';
 
@@ -63,5 +63,13 @@ describe('DigiKey normalisation', () => {
     expect(part.MouserPartNumber).toBe('');
     expect(part.PriceBreaks).toHaveLength(1);
     expect(part.AvailabilityInStock).toBe('3');
+  });
+});
+
+describe('isMarketPlaceOnly', () => {
+  it('flags a product sold only through the DigiKey Marketplace', () => {
+    const v = (n: string, mp: boolean) => ({ DigiKeyProductNumber: n, MarketPlace: mp });
+    expect(isMarketPlaceOnly({ ProductVariations: [v('A', true), v('B', true)] } as DigiKeyProduct)).toBe(true);
+    expect(isMarketPlaceOnly({ ProductVariations: [v('A', true), v('B', false)] } as DigiKeyProduct)).toBe(false);
   });
 });

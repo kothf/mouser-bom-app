@@ -125,7 +125,8 @@ export class MouserClient {
     keyword: string,
     apiKeyOverride?: string,
     records: number = 20,
-    pageNumber: number = 1
+    pageNumber: number = 1,
+    inStockOnly: boolean = false
   ): Promise<{ parts: MouserPart[]; totalResults: number; error?: string }> {
     const cleanKeyword = (keyword || '').trim();
     if (!cleanKeyword) {
@@ -157,7 +158,7 @@ export class MouserClient {
               keyword: cleanKeyword,
               records,
               pageNumber,
-              searchOptions: 'None',
+              searchOptions: inStockOnly ? 'InStock' : 'None',
               searchWithYourSignUpLanguage: 'None',
             },
           }),

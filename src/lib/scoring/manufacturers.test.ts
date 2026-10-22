@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MouserPart } from '../mouser/types';
-import { manufacturerRule, manufacturerScore, priceScores } from './manufacturers';
+import { manufacturerRule, manufacturerScore, orderCost, priceScores } from './manufacturers';
 import { pickBestKeywordPart } from '@/store/bom-store';
 
 function part(mpn: string, manufacturer: string, price: number, description = 'Aluminum Electrolytic Capacitors - Radial Leaded 22uF 450V'): MouserPart {
@@ -58,5 +58,33 @@ describe('pickBestKeywordPart with manufacturer and price', () => {
     const wrongVoltage = part('W', 'Nichicon', 0.5, 'Aluminum Electrolytic Capacitors - Radial Leaded 22uF 400V');
     const right = part('R', "Su'scon", 3);
     expect(pickBestKeywordPart([wrongVoltage, right], '22uF 450V Capacitor', 1)?.ManufacturerPartNumber).toBe('R');
+  });
+});
+
+describe('order cost', () => {
+  it('prices the quantity that must really be bought', () => {
+    const reel = { ...part('REEL', 'Nichicon', 0.01), Min: '1000', Mult: '1000' };
+    const loose = part('LOOSE', 'Nichicon', 0.1);
+    expect(orderCost(reel, 10)).toBeCloseTo(10);
+    expect(orderCost(loose, 10)).toBeCloseTo(1);
+    const scores = priceScores([reel, loose], 10);
+    expect(scores.get(loose)).toBe(100);
+    expect(scores.get(reel)).toBe(10);
+  });
+
+  it('rounds up to the order multiple', () => {
+    expect(orderCost({ ...part('M', 'Nichicon', 1), Mult: '5' }, 7)).toBeCloseTo(10);
+  });
+});
+
+describe('pickBestKeywordPart value matching', () => {
+  it('rejects a part rated below the asked voltage even if it is the only one', () => {
+    const low = part('L', 'Nichicon', 1, 'Aluminum Electrolytic Capacitors - Radial Leaded 22uF 50V');
+    expect(pickBestKeywordPart([low], '22uF 450V Capacitor', 1)).toBeNull();
+  });
+
+  it('does not count 50V as found in 250V', () => {
+    const b = part('B', 'Nichicon', 1, 'Aluminum Electrolytic Capacitors - Radial Leaded 22uF 50V');
+    expect(pickBestKeywordPart([b], '22uF 250V Capacitor', 1)).toBeNull();
   });
 });

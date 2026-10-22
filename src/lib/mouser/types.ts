@@ -20,6 +20,9 @@ export interface MouserPart {
   MountingType?: string;
   // "450V"; DigiKey's Voltage - Rated parameter. Mouser has it in the description.
   VoltageRating?: string;
+  // "22 µF ±20%"; DigiKey's value parameters (capacitance, resistance, power,
+  // tolerance). Mouser has them in the description.
+  SpecText?: string;
   LeadTime?: string;
   LifecycleStatus?: string;
   Manufacturer: string;

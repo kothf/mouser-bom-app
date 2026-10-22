@@ -43,7 +43,8 @@ function mockSearch(byVoltage: Record<string, MouserPart[]>) {
     'fetch',
     vi.fn(async (_url: string, init: { body: string }) => {
       const { keyword } = JSON.parse(init.body);
-      keywords.push(keyword);
+      // An empty in-stock search is repeated without the filter; list each query once.
+      if (keywords[keywords.length - 1] !== keyword) keywords.push(keyword);
       const v = Object.keys(byVoltage).find((k) => keyword.includes(` ${k} `));
       return { ok: true, json: async () => ({ parts: v ? byVoltage[v] : [] }) };
     })

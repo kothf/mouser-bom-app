@@ -10,7 +10,8 @@ import {
   withVoltage,
 } from '@/lib/voltage/voltage';
 import { alternateValueQueries } from '@/lib/value/notation';
-import { manufacturerScore, priceScores, valueScore } from '@/lib/scoring/manufacturers';
+import { pickBestKeywordPart } from '@/lib/scoring/pick';
+import { isAuthError, keywordSearch } from '@/lib/search/keyword';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { apiPath } from '@/lib/api-path';
 import {
@@ -67,49 +68,8 @@ const STORAGE_KEYS: Record<Supplier, { items: string; cart: string }> = {
   digikey: { items: 'digikey_bom_items_v1', cart: 'digikey_bom_cart_v1' },
 };
 
-/**
- * Pick the best part for a keyword query (CAD import): favour parts with the
- * line's mounting (SMD or regular through-hole), in stock for the requested
- * quantity, whose description mentions the query's values. Among those, a
- * well-rated manufacturer and a lower price win (never over a missed value).
- */
-export function pickBestKeywordPart(
-  parts: MouserPart[],
-  query: string,
-  requestedQty: number,
-  wantSmd: boolean = false
-): MouserPart | null {
-  if (!parts || parts.length === 0) return null;
-  const tokens = query
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/ohm$/, ''))
-    .filter((t) => t.length > 1 && /\d/.test(t));
-
-  const prices = priceScores(parts, requestedQty);
-  const score = (p: MouserPart): number => {
-    let s = 500 * mountingScore(p, wantSmd);
-    s += valueScore(manufacturerScore(p), prices.get(p) ?? 0);
-    if (!p.MouserPartNumber || p.MouserPartNumber.toLowerCase() === 'n/a') s -= 1000;
-    const stock = parseStockQuantity(p.Availability, p.AvailabilityInStock, p.FactoryStock);
-    if (stock >= requestedQty) s += 400;
-    else if (stock > 0) s += 150;
-    if (p.PriceBreaks && p.PriceBreaks.length > 0) s += 100;
-    const moq = parseInt(p.Min || '1', 10) || 1;
-    if (moq <= requestedQty) s += 100;
-    const haystack = `${p.Description} ${p.ManufacturerPartNumber}`.toLowerCase().replace(/\s+/g, '');
-    tokens.forEach((t) => {
-      if (haystack.includes(t.replace(/\s+/g, ''))) s += 120;
-    });
-    return s;
-  };
-
-  return [...parts].sort((a, b) => score(b) - score(a))[0] || parts[0];
-}
-
-function isAuthError(message?: string): boolean {
-  return Boolean(message) && /api key|unauthorized|forbidden|quota|rate limit|identifier|rejected|authoriz|client id|secret/i.test(message!);
-}
+// Re-exported for the tests and callers that import it from the store.
+export { pickBestKeywordPart };
 
 export async function queryAndMatchSingleItem(
   item: BOMItem,
@@ -121,7 +81,8 @@ export async function queryAndMatchSingleItem(
   const wantSmd = Boolean(item.smd);
   try {
     const search = async (body: Record<string, unknown>) => {
-      const res = await fetch(supplierApiPath(supplier, isKeyword ? 'search/keyword' : 'search/partnumber'), {
+      if (isKeyword) return keywordSearch(supplier, headers, String(body.keyword), Number(body.records) || 50);
+      const res = await fetch(supplierApiPath(supplier, 'search/partnumber'), {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
@@ -138,7 +99,7 @@ export async function queryAndMatchSingleItem(
       const hint = mountingKeyword(supplier, wantSmd);
       let result = await search({ keyword: hint ? `${query} ${hint}` : query, records: 50 });
       const hinted: MouserPart[] = result.error ? [] : result.parts || [];
-      const best = pickBestKeywordPart(hinted, query, item.requestedQty, wantSmd);
+      const best = pickBestKeywordPart(hinted, query, item.requestedQty, wantSmd, item.category);
       if (hint && (!best || mountingScore(best, wantSmd) < 0)) {
         const plain = await search({ keyword: query, records: 50 });
         if (!plain.error) {
@@ -176,7 +137,7 @@ export async function queryAndMatchSingleItem(
         if (found.length === 0) found = partsRatedBetween(seen, volts);
         if (found.length > 0) {
           data = { ...data, error: undefined, parts: found };
-          const best = pickBestKeywordPart(found, query, item.requestedQty, wantSmd);
+          const best = pickBestKeywordPart(found, query, item.requestedQty, wantSmd, item.category);
           const bestVolts = best ? partVoltage(best) : null;
           if (bestVolts !== null && bestVolts > volts) {
             voltageNote = `No ${volts}V part found, picked a ${bestVolts}V one`;
@@ -184,7 +145,7 @@ export async function queryAndMatchSingleItem(
         }
       }
       const parts: MouserPart[] = data.error ? [] : data.parts || [];
-      const best = pickBestKeywordPart(parts, query, item.requestedQty, wantSmd);
+      const best = pickBestKeywordPart(parts, query, item.requestedQty, wantSmd, item.category);
       const stock = best ? parseStockQuantity(best.Availability, best.AvailabilityInStock, best.FactoryStock) : 0;
       return { data, query, voltageNote, best, stock };
     };
@@ -222,11 +183,15 @@ export async function queryAndMatchSingleItem(
 
     const parts: MouserPart[] = data.parts || [];
 
-    if (parts.length > 0 && !data.error) {
-      const matchedPart =
-        (isKeyword
-          ? pickBestKeywordPart(parts, query, item.requestedQty, wantSmd)
-          : pickBestMatchedPart(parts, item.rawPartNumber, wantSmd)) || parts[0];
+    // A keyword line takes only a part that fits its values; none fitting is unresolved.
+    const matchedPart =
+      parts.length > 0 && !data.error
+        ? isKeyword
+          ? pickBestKeywordPart(parts, query, item.requestedQty, wantSmd, item.category)
+          : pickBestMatchedPart(parts, item.rawPartNumber, wantSmd) || parts[0]
+        : null;
+
+    if (matchedPart) {
       const stock = parseStockQuantity(
         matchedPart.Availability,
         matchedPart.AvailabilityInStock,
@@ -263,7 +228,9 @@ export async function queryAndMatchSingleItem(
     } else {
       const errMsg =
         data.error ||
-        (isKeyword
+        (isKeyword && parts.length > 0
+          ? `${parts.length} ${label} results for "${item.rawPartNumber}", none with these values`
+          : isKeyword
           ? `No ${label} results for "${item.rawPartNumber}"`
           : `Part "${item.rawPartNumber}" not found in ${label} catalog`);
       const isAuthOrNetworkError = isAuthError(errMsg);

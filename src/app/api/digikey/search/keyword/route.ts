@@ -5,7 +5,7 @@ import { digikeyClient, resolveDigiKeyCredentials } from '@/lib/digikey/client';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { keyword, records, pageNumber } = body;
+    const { keyword, records, pageNumber, inStockOnly } = body;
 
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json(
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
       keyword,
       creds,
       Number(records) || 20,
-      Number(pageNumber) || 1
+      Number(pageNumber) || 1,
+      inStockOnly === true
     );
 
     return NextResponse.json({ parts: await convertPartsToUsd(parts), totalResults, error });
