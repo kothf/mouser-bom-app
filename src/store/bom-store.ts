@@ -391,6 +391,7 @@ function createBomStore(supplier: Supplier) {
         meetsMoq,
         meetsMultiple,
         isCustomPart: Boolean(partialItem.isCustomPart),
+        smd: Boolean(partialItem.smd),
       };
 
       const updated = [...current, newItem];
