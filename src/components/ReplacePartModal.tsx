@@ -14,7 +14,10 @@ import { BOMItem, MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
 import { missingCredentialsMessage, searchHeadersIfConnected, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity } from '@/lib/mouser/client';
-import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+import { Supplier, SUPPLIER_LABELS } from '@/lib/supplier';
+import { keywordSearch } from '@/lib/search/keyword';
+import { rankKeywordParts } from '@/lib/scoring/pick';
+import { higherRatings, requestedCapacitorVoltage, withVoltage } from '@/lib/voltage/voltage';
 import { mountingKeyword, partMounting } from '@/lib/mounting/mounting';
 import { alternateValueQueries } from '@/lib/value/notation';
 import {
@@ -31,17 +34,7 @@ async function searchKeyword(
   headers: Record<string, string>
 ): Promise<{ parts: MouserPart[]; error?: string }> {
   try {
-    const res = await fetch(supplierApiPath(supplier, 'search/keyword'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ keyword, records: 30 }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: Failed to search`);
-    }
-
-    const data = await res.json();
+    const data = await keywordSearch(supplier, headers, keyword, 50);
     if (data.error && (!data.parts || data.parts.length === 0)) {
       return { parts: [], error: data.error };
     }
@@ -51,24 +44,26 @@ async function searchKeyword(
   }
 }
 
-/**
- * Search replacements with the line's mounting (an unticked SMD box means
- * through-hole parts only) and every other notation of the value
- * (470nF = 0.47uF = 470000pF, 4.7k = 4K7 = 4700 Ohm). In-stock parts first,
- * then by manufacturer reputation and price.
- */
 interface ScoredPart {
   part: MouserPart;
   /** Forum rating of the manufacturer, 0-100. */
   maker: number;
   tier?: ManufacturerTier;
-  /** Price against the other results, 0-100 (cheapest = 100). */
+  /** Order cost against the other results, 0-100 (cheapest = 100). */
   price: number;
   /** Manufacturer and price combined, 0-100. */
   score: number;
   stock: number;
 }
 
+/**
+ * Search replacements with the same rules as the automatic pick: the line's
+ * mounting (an unticked SMD box means through-hole parts only), every other
+ * notation of the value (470nF = 0.47uF, 4.7k = 4K7), and only parts that fit
+ * the asked values (a capacitor with no stock at its voltage also looks at
+ * the next higher ratings, never lower). Ranked like the automatic pick:
+ * mounting, stock, matching values, then manufacturer and order cost.
+ */
 async function searchAlternates(
   supplier: Supplier,
   query: string,
@@ -81,37 +76,56 @@ async function searchAlternates(
 
   const wantSmd = Boolean(item.smd);
   const hint = mountingKeyword(supplier, wantSmd);
-  const queries = [query, ...alternateValueQueries(query, item.category).map((a) => a.query)];
-  const results = await Promise.all(
-    queries.map(async (q) => {
-      const hinted = hint ? await searchKeyword(supplier, `${q} ${hint}`, headers) : null;
-      // The mounting word can hide parts the supplier describes differently,
-      // so fall back to the plain query; the filter below keeps mounting right.
-      return hinted && hinted.parts.length > 0 ? hinted : searchKeyword(supplier, q, headers);
-    })
-  );
+  const search = (queries: string[]) =>
+    Promise.all(
+      queries.map(async (q) => {
+        const hinted = hint ? await searchKeyword(supplier, `${q} ${hint}`, headers) : null;
+        // The mounting word can hide parts the supplier describes differently,
+        // so fall back to the plain query; the filter below keeps mounting right.
+        return hinted && hinted.parts.length > 0 ? hinted : searchKeyword(supplier, q, headers);
+      })
+    );
 
   const seen = new Set<string>();
-  const parts = results
-    .flatMap((r) => r.parts)
-    .filter((p) => partMounting(p) !== (wantSmd ? 'tht' : 'smd'))
-    .filter((p) => {
-      const key = `${p.MouserPartNumber}|${p.ManufacturerPartNumber}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  const prices = priceScores(parts, item.requestedQty);
-  const scored: ScoredPart[] = parts.map((part) => {
+  const collect = (rs: { parts: MouserPart[] }[]) =>
+    rs
+      .flatMap((r) => r.parts)
+      .filter((p) => partMounting(p) !== (wantSmd ? 'tht' : 'smd'))
+      .filter((p) => {
+        const key = `${p.MouserPartNumber}|${p.ManufacturerPartNumber}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+  const results = await search([query, ...alternateValueQueries(query, item.category).map((a) => a.query)]);
+  const parts = collect(results);
+  const inStock = (list: MouserPart[]) =>
+    rankKeywordParts(list, query, item.requestedQty, wantSmd, item.category).some(
+      ({ part }) => parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock) > 0
+    );
+
+  const volts = requestedCapacitorVoltage(query, item.category);
+  if (volts !== null && !inStock(parts)) {
+    const higher = await search(higherRatings(volts).map((v) => withVoltage(query, v)));
+    results.push(...higher);
+    parts.push(...collect(higher));
+  }
+
+  const ranked = rankKeywordParts(parts, query, item.requestedQty, wantSmd, item.category);
+  const prices = priceScores(ranked.map((r) => r.part), item.requestedQty);
+  const scored: ScoredPart[] = ranked.map(({ part }) => {
     const maker = manufacturerScore(part);
     const price = prices.get(part) ?? 0;
     const stock = parseStockQuantity(part.Availability, part.AvailabilityInStock, part.FactoryStock);
     return { part, maker, tier: manufacturerRule(part.Manufacturer)?.tier, price, score: valueScore(maker, price), stock };
   });
-  // In-stock first, then the best manufacturer + price score.
-  scored.sort((a, b) => Number(b.stock > 0) - Number(a.stock > 0) || b.score - a.score);
 
-  const error = scored.length === 0 ? results.find((r) => r.error)?.error : undefined;
+  const error =
+    scored.length === 0
+      ? results.find((r) => r.error)?.error ||
+        (parts.length > 0 ? `${parts.length} parts found, none with the values of "${query}"` : undefined)
+      : undefined;
   return { parts: scored, error };
 }
 
@@ -225,8 +239,9 @@ function ReplacePartDialog({ item: selectedItemForReplace }: { item: BOMItem }) 
             {selectedItemForReplace.smd
               ? 'SMD is ticked for this line, so only surface-mount parts are shown.'
               : 'SMD is not ticked for this line, so SMD parts are hidden.'}{' '}
-            Other ways of writing the value (e.g. 470nF = 0.47uF, 4.7k = 4K7) are searched too. In-stock parts come
-            first, then the best score (manufacturer rating and price, equal weight).
+            Other ways of writing the value (e.g. 470nF = 0.47uF, 4.7k = 4K7) are searched too, and only parts with
+            the line&apos;s values are shown (same or higher voltage and wattage, same or tighter tolerance). In-stock
+            parts come first, then the best score (manufacturer rating and order cost, equal weight).
           </p>
         </div>
 

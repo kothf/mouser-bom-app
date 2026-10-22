@@ -6,7 +6,7 @@ import {
   DigiKeyProduct,
   DigiKeyProductDetailsResponse,
 } from './types';
-import { normalizeDigiKeyProduct } from './normalize';
+import { isMarketPlaceOnly, normalizeDigiKeyProduct } from './normalize';
 import { withoutDistributorPrefix } from '../part-number';
 
 /**
@@ -167,7 +167,8 @@ export class DigiKeyClient {
     keyword: string,
     creds: DigiKeyCredentials,
     records: number = 20,
-    pageNumber: number = 1
+    pageNumber: number = 1,
+    inStockOnly: boolean = false
   ): Promise<{ parts: MouserPart[]; totalResults: number; exactMatches: MouserPart[]; error?: string }> {
     const clean = (keyword || '').trim();
     if (!clean) return { parts: [], totalResults: 0, exactMatches: [] };
@@ -177,18 +178,32 @@ export class DigiKeyClient {
 
     const limit = Math.min(50, Math.max(1, records));
     try {
-      const { data } = await digikeyRequest<DigiKeyKeywordResponse>(creds, '/products/v4/search/keyword', {
-        method: 'POST',
-        body: {
-          Keywords: clean,
-          Limit: limit,
-          Offset: Math.max(0, (pageNumber - 1) * limit),
-        },
-      });
+      const base = { Keywords: clean, Limit: limit, Offset: Math.max(0, (pageNumber - 1) * limit) };
+      // Marketplace listings are sold and shipped by third parties, never wanted here.
+      const filters = {
+        MarketPlaceFilter: 'ExcludeMarketPlace',
+        ...(inStockOnly ? { SearchOptions: ['InStock'] } : {}),
+      };
+      let data: DigiKeyKeywordResponse | null;
+      try {
+        ({ data } = await digikeyRequest<DigiKeyKeywordResponse>(creds, '/products/v4/search/keyword', {
+          method: 'POST',
+          body: { ...base, FilterOptionsRequest: filters },
+        }));
+      } catch (err: unknown) {
+        // If DigiKey ever rejects the filters, search without them; marketplace
+        // parts are still dropped below and stock is still ranked by the app.
+        if (/authoriz|client id|secret|429/i.test((err as Error).message || '')) throw err;
+        ({ data } = await digikeyRequest<DigiKeyKeywordResponse>(creds, '/products/v4/search/keyword', {
+          method: 'POST',
+          body: base,
+        }));
+      }
 
       const currency = creds.localeCurrency || 'USD';
+      // Also drop any marketplace-only product the filter lets through.
       const toParts = (list?: DigiKeyProduct[]) =>
-        (list || []).map((p) => normalizeDigiKeyProduct(p, currency));
+        (list || []).filter((p) => !isMarketPlaceOnly(p)).map((p) => normalizeDigiKeyProduct(p, currency));
 
       const exactMatches = toParts(data?.ExactMatches);
       const products = toParts(data?.Products);

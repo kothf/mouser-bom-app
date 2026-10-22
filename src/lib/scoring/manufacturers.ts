@@ -87,13 +87,27 @@ export function unitPriceAt(part: MouserPart, qty: number): number {
 }
 
 /**
- * 0-100 price score against the other candidates: the cheapest part scores
- * 100, one twice as expensive 50, and a part with no price 0.
+ * What the line really costs with this part: the quantity that must be
+ * bought (at least the minimum order, in whole order multiples) at the price
+ * for that quantity. A reel-only part at $0.01 x 1000 costs $10, not $0.10.
+ * 0 when the part has no prices.
+ */
+export function orderCost(part: MouserPart, qty: number): number {
+  const moq = parseInt(part.Min || '1', 10) || 1;
+  const mult = parseInt(part.Mult || '1', 10) || 1;
+  const buy = Math.ceil(Math.max(qty, moq, 1) / mult) * mult;
+  return unitPriceAt(part, buy) * buy;
+}
+
+/**
+ * 0-100 price score against the other candidates, by the cost of the order
+ * (see orderCost): the cheapest part scores 100, one twice as expensive 50,
+ * and a part with no price 0.
  */
 export function priceScores(parts: MouserPart[], qty: number): Map<MouserPart, number> {
-  const prices = parts.map((p) => unitPriceAt(p, qty));
-  const cheapest = Math.min(...prices.filter((p) => p > 0));
-  return new Map(parts.map((p, i) => [p, prices[i] > 0 && Number.isFinite(cheapest) ? Math.round((100 * cheapest) / prices[i]) : 0]));
+  const costs = parts.map((p) => orderCost(p, qty));
+  const cheapest = Math.min(...costs.filter((c) => c > 0));
+  return new Map(parts.map((p, i) => [p, costs[i] > 0 && Number.isFinite(cheapest) ? Math.round((100 * cheapest) / costs[i]) : 0]));
 }
 
 /** Manufacturer and price scores combined, 0-100, equal weight. */

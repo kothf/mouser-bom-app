@@ -21,6 +21,12 @@ export function pickDigiKeyVariation(product: DigiKeyProduct): DigiKeyProductVar
   })[0];
 }
 
+/** A product whose every package variation is a third-party marketplace listing. */
+export function isMarketPlaceOnly(product: DigiKeyProduct): boolean {
+  const variations = (product.ProductVariations || []).filter((v) => v && v.DigiKeyProductNumber);
+  return variations.length > 0 && variations.every((v) => v.MarketPlace);
+}
+
 function formatPrice(value: number, currency: string): string {
   try {
     return new Intl.NumberFormat('en-US', {
@@ -61,6 +67,11 @@ export function normalizeDigiKeyProduct(product: DigiKeyProduct, currency: strin
 
   const mountingType = product.Parameters?.find((p) => /mounting type/i.test(p.ParameterText || ''))?.ValueText;
   const voltageRating = product.Parameters?.find((p) => /^voltage - rated/i.test(p.ParameterText || ''))?.ValueText;
+  const specText = (product.Parameters || [])
+    .filter((p) => /^(capacitance|resistance|power \(watts\)|tolerance)$/i.test(p.ParameterText || ''))
+    .map((p) => p.ValueText)
+    .filter(Boolean)
+    .join(' ');
 
   return {
     MouserPartNumber: variation?.DigiKeyProductNumber || '',
@@ -76,6 +87,7 @@ export function normalizeDigiKeyProduct(product: DigiKeyProduct, currency: strin
     Category: product.Category?.Name || undefined,
     MountingType: mountingType || undefined,
     VoltageRating: voltageRating || undefined,
+    SpecText: specText || undefined,
     LeadTime: product.ManufacturerLeadWeeks ? `${product.ManufacturerLeadWeeks} weeks` : undefined,
     LifecycleStatus: product.ProductStatus?.Status || undefined,
     ROHSStatus: product.Classifications?.RohsStatus || undefined,
