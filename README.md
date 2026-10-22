@@ -79,7 +79,7 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 
 ### 3. Interactive BOM Grid & Dynamic Pricing Engine
 - **TanStack Table (React Table v8)**: Sortable columns, search filter, and status filters.
-- **Prices in USD only**: DigiKey is queried in USD; Mouser price breaks in another currency (set by the account behind the API key) are converted on the server (`src/lib/currency/usd.ts`, daily rate from frankfurter.dev, falling back to open.er-api.com, then to built-in approximate rates). The Mouser cart total and BOMs saved in the browser before this rule are converted too.
+- **Prices in USD only**: DigiKey is queried in USD; Mouser price breaks in another currency (set by the account behind the API key) are converted on the server (`src/lib/currency/usd.ts`, live daily rate from frankfurter.dev, falling back to open.er-api.com and the fawazahmed0 currency API; a price with no live rate is hidden, never shown in another currency). The Mouser cart total and BOMs saved in the browser before this rule are converted too.
 - **Select and delete lines**: every row has a checkbox (plus a select-all box in the header); **Delete selected (n)** removes the ticked lines from the active BOM.
 - **Dynamic Tiered Pricing**: Inline quantity adjustments automatically recalculate the matching price break tier and extended total (`Qty * Unit Price`).
 - **Hover Price Break Matrix**: Interactive popover showing volume quantity discounts.
@@ -138,7 +138,7 @@ mouser-bom-app/
 │   │   ├── mouser/                            # Mouser client, price math, rate limiter, types
 │   │   ├── digikey/                           # DigiKey OAuth client & normalisation to the common part shape
 │   │   ├── currency/usd.ts                    # Server-side conversion to USD
-│   │   ├── currency/convert.ts                # Rate math + built-in fallback rates
+│   │   ├── currency/convert.ts                # Rate math shared by server and browser
 │   │   ├── voltage/voltage.ts                 # Higher-voltage capacitor fallback
 │   │   ├── value/notation.ts                  # Equivalent value notations (470nF = 0.47uF, 4.7k = 4K7)
 │   │   ├── mounting/mounting.ts               # SMD vs through-hole detection
@@ -192,7 +192,7 @@ DIGIKEY_CLIENT_SECRET=your_client_secret
 # DIGIKEY_API_BASE=https://sandbox-api.digikey.com
 ```
 
-All prices are shown in USD. DigiKey is asked for USD directly; Mouser prices in another currency (set by the account behind the API key) are converted on the server with a daily reference rate from frankfurter.dev, falling back to open.er-api.com and then to built-in approximate rates (`src/lib/currency/convert.ts`), so a price is never left in another currency. The Mouser cart total is converted the same way, and BOMs saved in the browser with an older currency are converted when they load (`/api/currency/rates`).
+All prices are shown in USD. DigiKey is asked for USD directly; Mouser prices in another currency (set by the account behind the API key) are converted on the server with a live daily reference rate from frankfurter.dev, falling back to open.er-api.com and the fawazahmed0 currency API (jsDelivr, then Cloudflare Pages). If none of them answers, the last live rates are kept; if there were never any, the price is hidden rather than shown in another currency. The Mouser cart total is converted the same way, and BOMs saved in the browser with an older currency are converted when they load (`/api/currency/rates`).
 
 DigiKey credentials can also be entered per browser in **Settings**; they are stored in `localStorage` and only sent to this app's own server, which exchanges them for an OAuth token. Never commit real keys.
 

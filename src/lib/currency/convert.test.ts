@@ -44,6 +44,11 @@ describe('convertBomItemWithRates', () => {
     expect(out).toMatchObject({ unitPrice: 2, extendedPrice: 20, currency: 'USD' });
   });
 
+  it('shows no price for a line whose currency has no live rate', () => {
+    const out = convertBomItemWithRates(item({ unitPrice: 8, extendedPrice: 80, currency: 'EUR' }), { USD: 1 });
+    expect(out).toMatchObject({ unitPrice: 0, extendedPrice: 0, currency: 'USD' });
+  });
+
   it('leaves a USD line alone', () => {
     const line = item({ unitPrice: 1, extendedPrice: 10 });
     expect(convertBomItemWithRates(line, rates)).toBe(line);

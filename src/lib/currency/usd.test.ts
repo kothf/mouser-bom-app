@@ -48,16 +48,43 @@ describe('convertPartsToUsd', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('uses the built-in rate when no rate source is reachable', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
-    const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '₪3.30', Currency: 'ILS' }])]);
-    expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$1.00', Currency: 'USD' });
+  it('tries the currency-api sources, which use lower-case codes', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('down', { status: 503 }))
+      .mockResolvedValueOnce(new Response('down', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ usd: { ils: 4 } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '₪8.00', Currency: 'ILS' }])]);
+    expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$2.00', Currency: 'USD' });
   });
 
-  it('keeps a price in a currency with no known rate', async () => {
+  it('hides prices it cannot convert instead of showing another currency', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
-    const parts = [part([{ Quantity: 1, Price: '5.00', Currency: 'XYZ' }])];
-    expect(await convertPartsToUsd(parts)).toEqual(parts);
+    const [p] = await convertPartsToUsd([
+      part([
+        { Quantity: 1, Price: '$1.00', Currency: 'USD' },
+        { Quantity: 10, Price: '1,20 €', Currency: 'EUR' },
+      ]),
+    ]);
+    expect(p.PriceBreaks).toEqual([{ Quantity: 1, Price: '$1.00', Currency: 'USD' }]);
+  });
+
+  it('keeps using the last live rates when the sources go down', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ rates: { EUR: 0.5 } }), { status: 200 }))
+      .mockResolvedValue(new Response('down', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      await convertPartsToUsd([part([{ Quantity: 1, Price: '1,00 €', Currency: 'EUR' }])]);
+      vi.advanceTimersByTime(7 * 60 * 60 * 1000);
+      const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '2,00 €', Currency: 'EUR' }])]);
+      expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$4.00', Currency: 'USD' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

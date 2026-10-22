@@ -586,7 +586,8 @@ function createBomStore(supplier: Supplier) {
           const cart = get().activeCart;
           const activeCart = cart ? convertCartWithRates(cart, rates) : cart;
           set({ items, activeCart });
-          persistToStorage(items, activeCart);
+          // Without live rates the prices are only hidden; keep the saved copy to convert later.
+          if (Object.keys(rates).length > 1) persistToStorage(items, activeCart);
         } catch (err) {
           console.warn('Could not convert saved BOM prices to USD:', err);
         }
