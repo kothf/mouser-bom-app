@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mouserClient } from '@/lib/mouser/client';
 import { MouserCartItem } from '@/lib/mouser/types';
+import { convertCartToUsd } from '@/lib/currency/usd';
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
       cartKey
     );
 
-    return NextResponse.json(cartResponse);
+    return NextResponse.json(await convertCartToUsd(cartResponse));
   } catch (error: unknown) {
     console.error('Error in /api/mouser/cart/create:', error);
     return NextResponse.json(

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { convertPartsToUsd, resetUsdRatesCache } from './usd';
+import { convertCartToUsd, convertPartsToUsd, resetUsdRatesCache } from './usd';
 import { MouserPart } from '@/lib/mouser/types';
 
 function part(breaks: { Quantity: number; Price: string; Currency: string }[]): MouserPart {
@@ -48,9 +48,33 @@ describe('convertPartsToUsd', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the original price when no rates are reachable', async () => {
+  it('uses the built-in rate when no rate source is reachable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
-    const parts = [part([{ Quantity: 1, Price: '1,20 €', Currency: 'EUR' }])];
+    const [p] = await convertPartsToUsd([part([{ Quantity: 1, Price: '₪3.30', Currency: 'ILS' }])]);
+    expect(p.PriceBreaks?.[0]).toEqual({ Quantity: 1, Price: '$1.00', Currency: 'USD' });
+  });
+
+  it('keeps a price in a currency with no known rate', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('down', { status: 503 })));
+    const parts = [part([{ Quantity: 1, Price: '5.00', Currency: 'XYZ' }])];
     expect(await convertPartsToUsd(parts)).toEqual(parts);
+  });
+});
+
+describe('convertCartToUsd', () => {
+  it('converts the cart total and line prices', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ rates: { EUR: 0.5 } }), { status: 200 }))
+    );
+    const cart = await convertCartToUsd({
+      CartKey: 'k',
+      CurrencyCode: 'EUR',
+      Total: 5,
+      CartItems: [{ MouserPartNumber: 'A', Quantity: 2, UnitPrice: 2.5, ExtendedPrice: 5 }],
+    });
+    expect(cart.CurrencyCode).toBe('USD');
+    expect(cart.Total).toBe(10);
+    expect(cart.CartItems?.[0]).toMatchObject({ UnitPrice: 5, ExtendedPrice: 10 });
   });
 });

@@ -12,6 +12,14 @@ import {
 import { alternateValueQueries } from '@/lib/value/notation';
 import { manufacturerScore, priceScores, valueScore } from '@/lib/scoring/manufacturers';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
+import { apiPath } from '@/lib/api-path';
+import {
+  UsdRates,
+  convertBomItemWithRates,
+  convertCartWithRates,
+  isUsd,
+  partNeedsUsd,
+} from '@/lib/currency/convert';
 import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
 
@@ -565,6 +573,24 @@ function createBomStore(supplier: Supplier) {
       }
 
       set({ items: loadedItems ?? [], activeCart: loadedCart, isLoaded: true });
+
+      // Lines saved before prices were USD-only can still hold another currency.
+      const needsUsd =
+        (loadedItems ?? []).some((i) => !isUsd(i.currency) || partNeedsUsd(i.matchedPart)) ||
+        Boolean(loadedCart && !isUsd(loadedCart.CurrencyCode));
+      if (needsUsd) {
+        try {
+          const res = await fetch(apiPath('/api/currency/rates'));
+          const { rates } = (await res.json()) as { rates: UsdRates };
+          const items = get().items.map((i) => convertBomItemWithRates(i, rates));
+          const cart = get().activeCart;
+          const activeCart = cart ? convertCartWithRates(cart, rates) : cart;
+          set({ items, activeCart });
+          persistToStorage(items, activeCart);
+        } catch (err) {
+          console.warn('Could not convert saved BOM prices to USD:', err);
+        }
+      }
     },
 
     resolveAllItems: async (explicitKey?: string) => {
