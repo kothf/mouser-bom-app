@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -41,10 +41,86 @@ import { calculateTierPrice } from '@/lib/mouser/client';
 import { apiPath } from '@/lib/api-path';
 import { SUPPLIER_LABELS, SUPPLIER_SITES } from '@/lib/supplier';
 import { ExportDropdown } from './ExportDropdown';
+import { FloatingPanel } from './FloatingPanel';
 
 const DIGIKEY_CART_URL = 'https://www.digikey.com/ordering/shoppingcart';
 
 const columnHelper = createColumnHelper<BOMItem>();
+
+/** Unit price with a volume price-break tooltip that renders above the table, so it is never clipped. */
+function UnitPriceCell({ item, unitPrice }: { item: BOMItem; unitPrice: number }) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [showTiers, setShowTiers] = useState(false);
+  const breaks = item.matchedPart?.PriceBreaks || [];
+  const activeTier = breaks.length > 0 ? calculateTierPrice(breaks, item.requestedQty) : null;
+
+  return (
+    <div
+      ref={anchorRef}
+      className="cursor-help space-y-0.5"
+      tabIndex={breaks.length > 0 ? 0 : undefined}
+      onMouseEnter={() => setShowTiers(true)}
+      onMouseLeave={() => setShowTiers(false)}
+      onFocus={() => setShowTiers(true)}
+      onBlur={() => setShowTiers(false)}
+    >
+      <span className={`font-mono text-xs font-bold ${unitPrice > 0 ? 'text-white' : 'text-slate-600'}`}>
+        {unitPrice > 0 ? formatCurrency(unitPrice, item.currency) : '—'}
+      </span>
+      {breaks.length > 1 && (
+        <p className="text-[10px] text-blue-400 underline decoration-dotted">
+          {breaks.length} price tiers
+        </p>
+      )}
+
+      {/* Hover Tooltip showing price tiers */}
+      {breaks.length > 0 && (
+        <FloatingPanel
+          anchorRef={anchorRef}
+          open={showTiers}
+          placement="top"
+          className="bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-2xl text-[11px] min-w-[200px] font-mono pointer-events-none"
+        >
+          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
+            <span className="text-slate-400 text-[10px] font-sans font-semibold uppercase tracking-wider">
+              Volume Price Breaks
+            </span>
+            <span className="text-[10px] text-slate-500 font-sans">
+              Req: {item.requestedQty}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {breaks.map((b, idx) => {
+              const tierQty = parseInt(String(b.Quantity).replace(/[^0-9]/g, ''), 10) || 1;
+              const isActive = activeTier?.matchedTierQty === tierQty;
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center justify-between px-1.5 py-0.5 rounded transition ${
+                    isActive
+                      ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>{b.Quantity}+</span>
+                    {isActive && (
+                      <span className="text-[9px] px-1 rounded bg-emerald-500/30 text-emerald-300 font-sans font-semibold uppercase">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <span>{b.Price}</span>
+                </div>
+              );
+            })}
+          </div>
+        </FloatingPanel>
+      )}
+    </div>
+  );
+}
 
 export function BomGrid() {
   const {
@@ -530,63 +606,7 @@ export function BomGrid() {
         header: 'Unit Price',
         cell: (info) => {
           const item = info.row.original;
-          const unitPrice = info.getValue();
-          const breaks = item.matchedPart?.PriceBreaks || [];
-          const activeTier = breaks.length > 0 ? calculateTierPrice(breaks, item.requestedQty) : null;
-
-          return (
-            <div className="relative group cursor-help space-y-0.5">
-              <span className={`font-mono text-xs font-bold ${unitPrice > 0 ? 'text-white' : 'text-slate-600'}`}>
-                {unitPrice > 0 ? formatCurrency(unitPrice, item.currency) : '—'}
-              </span>
-              {breaks.length > 1 && (
-                <p className="text-[10px] text-blue-400 underline decoration-dotted">
-                  {breaks.length} price tiers
-                </p>
-              )}
-
-              {/* Hover Tooltip showing price tiers */}
-              {breaks.length > 0 && (
-                <div className="absolute left-0 bottom-full mb-1 hidden group-hover:block z-40 bg-slate-900 border border-slate-700 rounded-lg p-3 shadow-2xl text-[11px] min-w-[200px] font-mono pointer-events-none">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 mb-2">
-                    <span className="text-slate-400 text-[10px] font-sans font-semibold uppercase tracking-wider">
-                      Volume Price Breaks
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-sans">
-                      Req: {item.requestedQty}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {breaks.map((b, idx) => {
-                      const tierQty = parseInt(String(b.Quantity).replace(/[^0-9]/g, ''), 10) || 1;
-                      const isActive = activeTier?.matchedTierQty === tierQty;
-
-                      return (
-                        <div
-                          key={idx}
-                          className={`flex items-center justify-between px-1.5 py-0.5 rounded transition ${
-                            isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
-                              : 'text-slate-400'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span>{b.Quantity}+</span>
-                            {isActive && (
-                              <span className="text-[9px] px-1 rounded bg-emerald-500/30 text-emerald-300 font-sans font-semibold uppercase">
-                                Active
-                              </span>
-                            )}
-                          </div>
-                          <span>{b.Price}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
+          return <UnitPriceCell item={item} unitPrice={info.getValue()} />;
         },
       }),
 
