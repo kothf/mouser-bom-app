@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
-import { Supplier } from '@/lib/supplier';
+import { Supplier, supplierApiPath } from '@/lib/supplier';
 
 export interface DigiKeySettings {
   digikeyClientId: string;
@@ -228,4 +229,57 @@ export function getSupplierSearchHeaders(
     explicitMouserKey?.trim() || state.searchApiKey?.trim() || sanitizeApiKey(stored.searchApiKey || '');
   if (key) headers['x-mouser-search-key'] = key;
   return { headers, hasCredentials: Boolean(key) };
+}
+
+const serverCredentialChecks: Partial<Record<Supplier, Promise<boolean>>> = {};
+
+/**
+ * Whether the server has its own search credentials for a supplier in its
+ * environment (MOUSER_SEARCH_API_KEY, DIGIKEY_CLIENT_ID/SECRET). Asked once
+ * per page load; the answer never reveals the credentials themselves.
+ */
+export function serverHasCredentials(supplier: Supplier): Promise<boolean> {
+  serverCredentialChecks[supplier] ??= fetch(supplierApiPath(supplier, 'verify'))
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => Boolean(data?.serverConfigured))
+    .catch(() => false);
+  return serverCredentialChecks[supplier]!;
+}
+
+/** True when a supplier can be searched: credentials in the browser or on the server. */
+export function useSupplierConnected(supplier: Supplier): boolean {
+  const browser = useSettingsStore((s) =>
+    supplier === 'digikey' ? Boolean(s.digikeyClientId && s.digikeyClientSecret) : Boolean(s.searchApiKey?.trim())
+  );
+  const [server, setServer] = useState<Partial<Record<Supplier, boolean>>>({});
+  useEffect(() => {
+    let cancelled = false;
+    serverHasCredentials(supplier).then((ok) => {
+      if (!cancelled) setServer((prev) => ({ ...prev, [supplier]: ok }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supplier]);
+  return browser || Boolean(server[supplier]);
+}
+
+/** Message shown when a supplier has no search credentials anywhere. */
+export function missingCredentialsMessage(supplier: Supplier): string {
+  return supplier === 'digikey'
+    ? 'DigiKey Client ID and Client Secret are not configured. Please open Settings to enter them.'
+    : 'Mouser Search API Key is not configured. Please open Settings to enter your key.';
+}
+
+/**
+ * Search headers for a supplier, or null when neither the browser nor the
+ * server has credentials for it. Same rule for Mouser and DigiKey.
+ */
+export async function searchHeadersIfConnected(
+  supplier: Supplier,
+  explicitMouserKey?: string
+): Promise<Record<string, string> | null> {
+  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitMouserKey);
+  if (hasCredentials || (await serverHasCredentials(supplier))) return headers;
+  return null;
 }

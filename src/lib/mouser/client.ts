@@ -7,6 +7,7 @@ import {
 } from './types';
 import { globalMouserRateLimiter } from './rate-limiter';
 import { mountingScore } from '../mounting/mounting';
+import { withoutDistributorPrefix } from '../part-number';
 
 const MOUSER_API_BASE = 'https://api.mouser.com/api/v1';
 
@@ -100,9 +101,9 @@ export class MouserClient {
       let parts = await queryMouser(rawClean);
 
       // 2. Second attempt: if 0 parts and partNumber has a manufacturer prefix (e.g. 80-C4AF3BW4470A3FK -> C4AF3BW4470A3FK), try stripped
-      if (parts.length === 0 && rawClean.includes('-')) {
-        const stripped = rawClean.replace(/^[0-9]{2,4}-/, '');
-        if (stripped !== rawClean && stripped.length >= 3) {
+      if (parts.length === 0) {
+        const stripped = withoutDistributorPrefix(rawClean);
+        if (stripped) {
           parts = await queryMouser(stripped);
         }
       }

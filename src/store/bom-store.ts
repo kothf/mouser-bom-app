@@ -20,7 +20,7 @@ import {
   isUsd,
   partNeedsUsd,
 } from '@/lib/currency/convert';
-import { getSupplierSearchHeaders, useSettingsStore } from './settings-store';
+import { missingCredentialsMessage, searchHeadersIfConnected, useSettingsStore } from './settings-store';
 import { useSupplierStore } from './supplier-store';
 
 export interface ResolveProgress {
@@ -294,16 +294,15 @@ export async function queryAndMatchSingleItem(
 }
 
 /**
- * Resolve search credentials before a lookup. Mouser needs a key in the
- * browser; DigiKey may also use credentials configured on the server, so a
- * missing browser credential does not block it.
+ * Resolve search credentials before a lookup. Both suppliers accept the
+ * user's own credentials from the browser or ones configured on the server;
+ * with neither, Settings opens instead of failing every line.
  */
-function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Record<string, string> | null {
-  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitKey);
-  if (supplier === 'mouser' && !hasCredentials) {
+async function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Promise<Record<string, string> | null> {
+  const headers = await searchHeadersIfConnected(supplier, explicitKey);
+  if (!headers) {
     useSettingsStore.getState().setIsSettingsOpen(true);
-    alert('Please configure your Mouser Search API Key in Settings to query live Mouser inventory.');
-    return null;
+    alert(missingCredentialsMessage(supplier));
   }
   return headers;
 }
@@ -598,7 +597,7 @@ function createBomStore(supplier: Supplier) {
       const { items } = get();
       if (items.length === 0) return;
 
-      const headers = credentialsOrPrompt(supplier, explicitKey);
+      const headers = await credentialsOrPrompt(supplier, explicitKey);
       if (!headers) return;
 
       set({
@@ -633,7 +632,7 @@ function createBomStore(supplier: Supplier) {
       const item = items.find((i) => i.id === id);
       if (!item) return;
 
-      const headers = credentialsOrPrompt(supplier, explicitKey);
+      const headers = await credentialsOrPrompt(supplier, explicitKey);
       if (!headers) return;
 
       const updatedItem = await queryAndMatchSingleItem(item, supplier, headers);

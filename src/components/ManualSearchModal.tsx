@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
-import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
+import { missingCredentialsMessage, searchHeadersIfConnected, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity, calculateTierPrice } from '@/lib/mouser/client';
 import { formatCurrency } from '@/lib/utils';
 import { SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
@@ -85,11 +85,10 @@ export function ManualSearchModal() {
     if (e) e.preventDefault();
     if (!query.trim()) return;
 
-    const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
-
-    // DigiKey may use credentials from the server environment, so only Mouser is checked here.
-    if (supplier === 'mouser' && !hasCredentials) {
-      setErrorMsg('Mouser Search API Key is not configured. Please open Settings to enter your key.');
+    // Credentials may be in the browser or on the server, for either supplier.
+    const headers = await searchHeadersIfConnected(supplier);
+    if (!headers) {
+      setErrorMsg(missingCredentialsMessage(supplier));
       return;
     }
 

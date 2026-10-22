@@ -3,16 +3,15 @@
 import React from 'react';
 import { Cpu, Search, Settings, ShoppingCart, ArrowLeft } from 'lucide-react';
 import { useBomStore } from '@/store/bom-store';
-import { useSettingsStore } from '@/store/settings-store';
+import { useSettingsStore, useSupplierConnected } from '@/store/settings-store';
 import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 export function Navbar() {
   const { supplier, activeCart, setIsManualSearchOpen, setIsCartModalOpen } = useBomStore();
 
-  const { searchApiKey, digikeyClientId, digikeyClientSecret, setIsSettingsOpen } = useSettingsStore();
+  const { setIsSettingsOpen } = useSettingsStore();
 
-  const hasCredentials =
-    supplier === 'digikey' ? Boolean(digikeyClientId && digikeyClientSecret) : Boolean(searchApiKey);
+  const hasCredentials = useSupplierConnected(supplier);
   const label = SUPPLIER_LABELS[supplier];
 
   return (

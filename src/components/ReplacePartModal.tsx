@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { BOMItem, MouserPart } from '@/lib/mouser/types';
 import { useBomStore } from '@/store/bom-store';
-import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
+import { missingCredentialsMessage, searchHeadersIfConnected, useSettingsStore } from '@/store/settings-store';
 import { parseStockQuantity } from '@/lib/mouser/client';
 import { Supplier, SUPPLIER_LABELS, supplierApiPath } from '@/lib/supplier';
 import { mountingKeyword, partMounting } from '@/lib/mounting/mounting';
@@ -74,11 +74,10 @@ async function searchAlternates(
   query: string,
   item: BOMItem
 ): Promise<{ parts: ScoredPart[]; error?: string }> {
-  const { headers, hasCredentials } = getSupplierSearchHeaders(supplier);
-
-  // DigiKey may use credentials from the server environment, so only Mouser is checked here.
-  if (supplier === 'mouser' && !hasCredentials) {
-    return { parts: [], error: 'Mouser Search API Key is not configured. Please open Settings to enter your key.' };
+  // Credentials may be in the browser or on the server, for either supplier.
+  const headers = await searchHeadersIfConnected(supplier);
+  if (!headers) {
+    return { parts: [], error: missingCredentialsMessage(supplier) };
   }
 
   const wantSmd = Boolean(item.smd);

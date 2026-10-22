@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { X, Check, ArrowRight, Table as TableIcon, FileText } from 'lucide-react';
 import { ParsedRawFile, ColumnMapping } from '@/lib/mouser/types';
 import { buildBomItemsFromRows } from '@/lib/parser/bom-parser';
+import { detectColumnMapping } from '@/lib/parser/column-detector';
 import { useBomStore } from '@/store/bom-store';
-import { useSettingsStore } from '@/store/settings-store';
 import { SUPPLIER_LABELS } from '@/lib/supplier';
 
 interface ColumnMappingModalProps {
@@ -16,15 +16,13 @@ interface ColumnMappingModalProps {
 export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalProps) {
   const { supplier, setItems, resolveAllItems } = useBomStore();
   const label = SUPPLIER_LABELS[supplier];
-  const { searchApiKey } = useSettingsStore();
 
-  const [mapping, setMapping] = useState<ColumnMapping>(
-    parsedFile?.suggestedMapping || {
-      partNumberCol: '',
-      quantityCol: '',
-      designatorCol: '',
-      descriptionCol: '',
-    }
+  // Detected again for this supplier, so its own part number column wins
+  // (a DigiKey BOM takes "Digi-Key Part Number", a Mouser BOM "Mouser Part Number").
+  const [mapping, setMapping] = useState<ColumnMapping>(() =>
+    parsedFile
+      ? detectColumnMapping(parsedFile.headers, supplier)
+      : { partNumberCol: '', quantityCol: '', designatorCol: '', descriptionCol: '' }
   );
 
   if (!parsedFile) return null;
@@ -40,14 +38,7 @@ export function ColumnMappingModal({ parsedFile, onClose }: ColumnMappingModalPr
     onClose();
 
     // Trigger automatic resolution through the selected supplier's API
-    let effectiveKey = searchApiKey?.trim();
-    if (!effectiveKey && typeof window !== 'undefined') {
-      try {
-        const stored = JSON.parse(localStorage.getItem('mouser_bom_settings_v1') || '{}');
-        effectiveKey = stored.searchApiKey?.trim();
-      } catch {}
-    }
-    resolveAllItems(effectiveKey);
+    resolveAllItems();
   };
 
   const previewRows = parsedFile.rows.slice(0, 5);
