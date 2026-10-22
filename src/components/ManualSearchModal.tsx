@@ -85,8 +85,7 @@ export function ManualSearchModal() {
     if (e) e.preventDefault();
     if (!query.trim()) return;
 
-    // Credentials may be in the browser or on the server, for either supplier.
-    const headers = await searchHeadersIfConnected(supplier);
+    const headers = searchHeadersIfConnected(supplier);
     if (!headers) {
       setErrorMsg(missingCredentialsMessage(supplier));
       return;

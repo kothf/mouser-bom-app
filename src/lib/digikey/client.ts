@@ -12,9 +12,9 @@ import { withoutDistributorPrefix } from '../part-number';
 /**
  * DigiKey Product Information API v4 client (server-side only).
  *
- * Credentials come from the request headers (the user's own Client ID/Secret
- * saved in the browser) or from the DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET
- * environment variables. They are never written to disk or returned to clients.
+ * Credentials come only from the request headers (the user's own Client
+ * ID/Secret saved in their browser); the server holds none. They are never
+ * written to disk or returned to clients.
  */
 
 const DEFAULT_API_BASE = 'https://api.digikey.com';
@@ -46,16 +46,12 @@ function cleanCredential(raw: string | null | undefined): string {
 }
 
 /**
- * Resolve credentials from request headers with environment fallback.
+ * Resolve credentials from the request headers.
  */
 export function resolveDigiKeyCredentials(headers: Headers): DigiKeyCredentials {
-  const headerId = cleanCredential(headers.get('x-digikey-client-id'));
-  const headerSecret = cleanCredential(headers.get('x-digikey-client-secret'));
-  const useHeaders = Boolean(headerId && headerSecret);
-
   return {
-    clientId: useHeaders ? headerId : cleanCredential(process.env.DIGIKEY_CLIENT_ID),
-    clientSecret: useHeaders ? headerSecret : cleanCredential(process.env.DIGIKEY_CLIENT_SECRET),
+    clientId: cleanCredential(headers.get('x-digikey-client-id')),
+    clientSecret: cleanCredential(headers.get('x-digikey-client-secret')),
     localeSite:
       cleanCredential(headers.get('x-digikey-locale-site')) || process.env.DIGIKEY_LOCALE_SITE || 'US',
     // Prices are always shown in USD.
@@ -65,7 +61,7 @@ export function resolveDigiKeyCredentials(headers: Headers): DigiKeyCredentials 
 }
 
 function missingCredentialsError(): string {
-  return 'DigiKey Client ID and Client Secret are not configured. Add them in Settings or set DIGIKEY_CLIENT_ID / DIGIKEY_CLIENT_SECRET on the server.';
+  return 'DigiKey Client ID and Client Secret are not configured. Please add them in Settings.';
 }
 
 function extractErrorMessage(data: unknown, status: number): string {

@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
-import { Supplier, supplierApiPath } from '@/lib/supplier';
+import { Supplier } from '@/lib/supplier';
 
 export interface DigiKeySettings {
   digikeyClientId: string;
@@ -76,11 +74,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, searchApiKey: clean }));
     } catch {}
-    fetch(apiPath('/api/mouser/settings'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ searchApiKey: clean }),
-    }).catch(() => {});
   },
 
   setCartApiKey: (key: string) => {
@@ -90,11 +83,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, cartApiKey: clean }));
     } catch {}
-    fetch(apiPath('/api/mouser/settings'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cartApiKey: clean }),
-    }).catch(() => {});
   },
 
   setRateLimitDelayMs: (ms: number) => {
@@ -126,19 +114,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...cleanSettings }));
     } catch {}
-
-    try {
-      await fetch(apiPath('/api/mouser/settings'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          searchApiKey: cleanSettings.searchApiKey,
-          cartApiKey: cleanSettings.cartApiKey,
-        }),
-      });
-    } catch (e) {
-      console.warn('Failed to save settings to server:', e);
-    }
   },
 
   saveDigiKeySettings: (settings: DigiKeySettings) => {
@@ -175,18 +150,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         });
       }
       set({ settingsLoaded: true });
-
-      // Also sync from server if configured
-      const res = await fetch(apiPath('/api/mouser/settings'));
-      if (res.ok) {
-        const serverData = await res.json();
-        set((state) => ({
-          searchApiKey: state.searchApiKey || serverData.searchApiKey || '',
-          cartApiKey: state.cartApiKey || serverData.cartApiKey || '',
-        }));
-      }
     } catch (e) {
-      console.warn('Failed to load settings from storage/server', e);
+      console.warn('Failed to load settings from browser storage', e);
       set({ settingsLoaded: true });
     }
   },
@@ -203,8 +168,7 @@ function readStoredSettings(): Record<string, string | undefined> {
 
 /**
  * Request headers carrying the user's own credentials for a supplier's search
- * API. `hasCredentials` is false when the browser holds none (the server may
- * still have its own from environment variables).
+ * API. `hasCredentials` is false when the browser holds none.
  */
 export function getSupplierSearchHeaders(
   supplier: Supplier,
@@ -231,40 +195,14 @@ export function getSupplierSearchHeaders(
   return { headers, hasCredentials: Boolean(key) };
 }
 
-const serverCredentialChecks: Partial<Record<Supplier, Promise<boolean>>> = {};
-
-/**
- * Whether the server has its own search credentials for a supplier in its
- * environment (MOUSER_SEARCH_API_KEY, DIGIKEY_CLIENT_ID/SECRET). Asked once
- * per page load; the answer never reveals the credentials themselves.
- */
-export function serverHasCredentials(supplier: Supplier): Promise<boolean> {
-  serverCredentialChecks[supplier] ??= fetch(supplierApiPath(supplier, 'verify'))
-    .then((res) => (res.ok ? res.json() : null))
-    .then((data) => Boolean(data?.serverConfigured))
-    .catch(() => false);
-  return serverCredentialChecks[supplier]!;
-}
-
-/** True when a supplier can be searched: credentials in the browser or on the server. */
+/** True when the browser holds search credentials for a supplier. */
 export function useSupplierConnected(supplier: Supplier): boolean {
-  const browser = useSettingsStore((s) =>
+  return useSettingsStore((s) =>
     supplier === 'digikey' ? Boolean(s.digikeyClientId && s.digikeyClientSecret) : Boolean(s.searchApiKey?.trim())
   );
-  const [server, setServer] = useState<Partial<Record<Supplier, boolean>>>({});
-  useEffect(() => {
-    let cancelled = false;
-    serverHasCredentials(supplier).then((ok) => {
-      if (!cancelled) setServer((prev) => ({ ...prev, [supplier]: ok }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [supplier]);
-  return browser || Boolean(server[supplier]);
 }
 
-/** Message shown when a supplier has no search credentials anywhere. */
+/** Message shown when a supplier has no search credentials. */
 export function missingCredentialsMessage(supplier: Supplier): string {
   return supplier === 'digikey'
     ? 'DigiKey Client ID and Client Secret are not configured. Please open Settings to enter them.'
@@ -272,14 +210,13 @@ export function missingCredentialsMessage(supplier: Supplier): string {
 }
 
 /**
- * Search headers for a supplier, or null when neither the browser nor the
- * server has credentials for it. Same rule for Mouser and DigiKey.
+ * Search headers for a supplier, or null when the browser has no credentials
+ * for it. Keys live only in the visitor's browser; the server holds none.
  */
-export async function searchHeadersIfConnected(
+export function searchHeadersIfConnected(
   supplier: Supplier,
   explicitMouserKey?: string
-): Promise<Record<string, string> | null> {
+): Record<string, string> | null {
   const { headers, hasCredentials } = getSupplierSearchHeaders(supplier, explicitMouserKey);
-  if (hasCredentials || (await serverHasCredentials(supplier))) return headers;
-  return null;
+  return hasCredentials ? headers : null;
 }

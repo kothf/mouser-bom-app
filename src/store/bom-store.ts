@@ -294,12 +294,12 @@ export async function queryAndMatchSingleItem(
 }
 
 /**
- * Resolve search credentials before a lookup. Both suppliers accept the
- * user's own credentials from the browser or ones configured on the server;
- * with neither, Settings opens instead of failing every line.
+ * Resolve search credentials before a lookup. Both suppliers use only the
+ * user's own credentials from the browser; without them, Settings opens
+ * instead of failing every line.
  */
-async function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Promise<Record<string, string> | null> {
-  const headers = await searchHeadersIfConnected(supplier, explicitKey);
+function credentialsOrPrompt(supplier: Supplier, explicitKey?: string): Record<string, string> | null {
+  const headers = searchHeadersIfConnected(supplier, explicitKey);
   if (!headers) {
     useSettingsStore.getState().setIsSettingsOpen(true);
     alert(missingCredentialsMessage(supplier));
@@ -597,7 +597,7 @@ function createBomStore(supplier: Supplier) {
       const { items } = get();
       if (items.length === 0) return;
 
-      const headers = await credentialsOrPrompt(supplier, explicitKey);
+      const headers = credentialsOrPrompt(supplier, explicitKey);
       if (!headers) return;
 
       set({
@@ -632,7 +632,7 @@ function createBomStore(supplier: Supplier) {
       const item = items.find((i) => i.id === id);
       if (!item) return;
 
-      const headers = await credentialsOrPrompt(supplier, explicitKey);
+      const headers = credentialsOrPrompt(supplier, explicitKey);
       if (!headers) return;
 
       const updatedItem = await queryAndMatchSingleItem(item, supplier, headers);

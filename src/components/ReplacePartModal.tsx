@@ -74,8 +74,7 @@ async function searchAlternates(
   query: string,
   item: BOMItem
 ): Promise<{ parts: ScoredPart[]; error?: string }> {
-  // Credentials may be in the browser or on the server, for either supplier.
-  const headers = await searchHeadersIfConnected(supplier);
+  const headers = searchHeadersIfConnected(supplier);
   if (!headers) {
     return { parts: [], error: missingCredentialsMessage(supplier) };
   }

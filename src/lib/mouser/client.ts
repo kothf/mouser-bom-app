@@ -11,20 +11,11 @@ import { withoutDistributorPrefix } from '../part-number';
 
 const MOUSER_API_BASE = 'https://api.mouser.com/api/v1';
 
+/**
+ * Mouser API client (server-side). Keys come only from the request (the
+ * user's own keys saved in their browser); the server holds none.
+ */
 export class MouserClient {
-  private defaultSearchKey: string;
-  private defaultCartKey: string;
-
-  constructor() {
-    this.defaultSearchKey = process.env.MOUSER_SEARCH_API_KEY || process.env.MOUSER_API_KEY || '';
-    this.defaultCartKey = process.env.MOUSER_CART_API_KEY || process.env.MOUSER_API_KEY || '';
-  }
-
-  public setKeys(searchKey?: string, cartKey?: string) {
-    if (searchKey !== undefined) this.defaultSearchKey = searchKey;
-    if (cartKey !== undefined) this.defaultCartKey = cartKey;
-  }
-
   /**
    * Search component by Part Number (MPN or Mouser Part #)
    */
@@ -39,7 +30,7 @@ export class MouserClient {
       return { parts: [], error: 'Empty part number provided' };
     }
 
-    const key = sanitizeApiKey(apiKeyOverride || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '');
+    const key = sanitizeApiKey(apiKeyOverride || '');
 
     if (!key) {
       return {
@@ -141,7 +132,7 @@ export class MouserClient {
       return { parts: [], totalResults: 0 };
     }
 
-    const key = sanitizeApiKey(apiKeyOverride || this.defaultSearchKey || process.env.MOUSER_SEARCH_API_KEY || '');
+    const key = sanitizeApiKey(apiKeyOverride || '');
 
     if (!key) {
       return {
@@ -223,7 +214,7 @@ export class MouserClient {
     apiKeyOverride?: string,
     existingCartKey?: string
   ): Promise<MouserCartResponse> {
-    const key = sanitizeApiKey(apiKeyOverride || this.defaultCartKey || process.env.MOUSER_CART_API_KEY || '');
+    const key = sanitizeApiKey(apiKeyOverride || '');
 
     if (!key) {
       throw new Error('Mouser Cart API Key is required to create a shopping cart. Please configure it in Settings.');

@@ -32,7 +32,7 @@ docker compose pull && docker compose up -d
 
 On the NUC that serves aerocat.tech, `/bom` follows `main` instead: cron runs `deploy/nuc/auto-deploy.sh` every 5 minutes, and when `main` has moved it builds the image locally, restarts the container and checks it. The live commit is at `https://aerocat.tech/bom/version.txt`. Details, rollback and setup are in [deploy/nuc/README.md](deploy/nuc/README.md).
 
-Optional server-wide credentials go in a `.env` file beside `docker-compose.yml` (`MOUSER_SEARCH_API_KEY=...`, `MOUSER_CART_API_KEY=...`, `DIGIKEY_CLIENT_ID=...`, `DIGIKEY_CLIENT_SECRET=...`). Both suppliers work the same way: a key set on the server is used whenever the visitor has not entered their own in Settings. If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
+The server holds no API keys: this is a public site, so every visitor enters their own Mouser key and DigiKey Client ID/Secret in **Settings**, where they stay in that browser. If the package is private, run `docker login ghcr.io` once with a GitHub token that has `read:packages`.
 
 Releases are built by `.github/workflows/release.yml`: every merge to `main` whose `package.json` version has no release yet publishes `v<version>` automatically (pushing a `v*` tag or running the workflow manually works too). Bump the version to ship a new release.
 
@@ -44,7 +44,7 @@ Releases are built by `.github/workflows/release.yml`: every merge to `main` who
 - A **supplier switcher** at the top selects Mouser or DigiKey. Each supplier has its **own BOM**, own browser storage and own cart flow, so results are never mixed in one BOM.
 - **BOMs stay in your browser.** They are saved only in this browser's `localStorage` and never sent to the server, so other visitors of a shared deployment cannot see them. A BOM does not follow you to another browser or device.
 - **DigiKey Product Information API v4**: part-number lookup (product details, falling back to exact keyword matches) and keyword search, with OAuth2 client-credentials tokens cached on the server and a rate limiter tuned for DigiKey's 120 requests/minute.
-- **Same features on both**: part-number and keyword search, the SMD box (BOM lines and the add-line dialog), capacitor voltage fallback, value notation retries, Find Alternate ranking, CAD and file import, USD prices, exports, and server-side credentials. A part number with a Mouser manufacturer prefix (`80-C4AF3BW4470A3FK`) is retried without it on both suppliers. The only difference is the cart (below).
+- **Same features on both**: part-number and keyword search, the SMD box (BOM lines and the add-line dialog), capacitor voltage fallback, value notation retries, Find Alternate ranking, CAD and file import, USD prices, exports, and API keys kept only in the browser. A part number with a Mouser manufacturer prefix (`80-C4AF3BW4470A3FK`) is retried without it on both suppliers. The only difference is the cart (below).
 - **DigiKey cart**: DigiKey has no public cart API comparable to Mouser's, so **Copy DigiKey Cart List** copies `Quantity, DigiKey Part Number, Customer Reference` lines and opens the DigiKey cart for pasting.
 
 ### 0b. Tube Amp CAD import by keywords
@@ -112,7 +112,6 @@ mouser-bom-app/
 │   │   │   ├── mouser/
 │   │   │   │   ├── search/{partnumber,keyword,batch}/route.ts  # Mouser Search API proxy (rate-limited)
 │   │   │   │   ├── cart/create/route.ts       # Mouser Cart API proxy
-│   │   │   │   ├── settings/route.ts          # Server-side key status
 │   │   │   │   └── verify/route.ts            # API key validation
 │   │   │   └── digikey/
 │   │   │       ├── search/{partnumber,keyword}/route.ts  # DigiKey Product Information v4 proxy
@@ -167,37 +166,13 @@ cd mouser-bom-app
 npm install
 ```
 
-### 2. Environment Configuration
+### 2. API keys
 
-Copy `.env.local.example` to `.env.local`:
-
-```bash
-cp .env.local.example .env.local
-```
-
-Edit `.env.local` to provide your Mouser API keys:
-
-```env
-# Get keys at: https://www.mouser.com/api-search/
-MOUSER_SEARCH_API_KEY=your_search_api_key_here
-MOUSER_CART_API_KEY=your_cart_api_key_here
-
-# Optional: set to true to force offline demo simulation mode
-NEXT_PUBLIC_DEMO_MODE=false
-
-# Optional: DigiKey app credentials (https://developer.digikey.com/, Product Information V4)
-DIGIKEY_CLIENT_ID=your_client_id
-DIGIKEY_CLIENT_SECRET=your_client_secret
-# Optional: locale and sandbox
-# DIGIKEY_LOCALE_SITE=US
-# DIGIKEY_API_BASE=https://sandbox-api.digikey.com
-```
+No keys go on the server or in environment files. Open **Settings** in the app and enter your Mouser Search API key (and optional Cart API key) from https://www.mouser.com/api-search/ and the Client ID/Secret of a DigiKey app (https://developer.digikey.com/, Product Information V4). They are saved only in your browser's `localStorage` and sent with each request to this app's server, which passes them to Mouser or DigiKey and never stores them. For the DigiKey sandbox, set `DIGIKEY_API_BASE=https://sandbox-api.digikey.com` on the server.
 
 All prices are shown in USD. DigiKey is asked for USD directly; Mouser prices in another currency (set by the account behind the API key) are converted on the server with a live daily reference rate from frankfurter.dev, falling back to open.er-api.com and the fawazahmed0 currency API (jsDelivr, then Cloudflare Pages). If none of them answers, the last live rates are kept; if there were never any, the price is hidden rather than shown in another currency. The Mouser cart total is converted the same way, and BOMs saved in the browser with an older currency are converted when they load (`/api/currency/rates`).
 
-DigiKey credentials can also be entered per browser in **Settings**; they are stored in `localStorage` and only sent to this app's own server, which exchanges them for an OAuth token. Never commit real keys.
-
-Mouser API keys can also be entered in the browser via the **Settings** modal; they are stored in `localStorage`.
+The server exchanges DigiKey credentials for a short-lived OAuth token, kept only in memory. Never commit real keys.
 
 ### 3. Development Server
 

@@ -8,7 +8,6 @@ import { useBomStore } from '@/store/bom-store';
 export function ApiKeyBanner() {
   const { supplier } = useBomStore();
   const { settingsLoaded, setIsSettingsOpen } = useSettingsStore();
-  // Credentials saved in the browser or set on the server both count.
   const hasKey = useSupplierConnected(supplier);
 
   // Wait until saved settings are read, and hide when credentials exist
