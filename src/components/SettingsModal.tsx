@@ -12,12 +12,105 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { getSupplierSearchHeaders, useSettingsStore } from '@/store/settings-store';
 import { getBomStore } from '@/store/bom-store';
 import { apiPath } from '@/lib/api-path';
 import { sanitizeApiKey } from '@/lib/mouser/client';
 import { supplierApiPath } from '@/lib/supplier';
+
+// Copies text without sending it anywhere; falls back to a hidden textarea where
+// the Clipboard API is unavailable (e.g. a plain-http deployment).
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  try {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(area);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// A credential input with show/hide and copy-to-clipboard buttons.
+function KeyInput({
+  value,
+  onChange,
+  placeholder,
+  label,
+  defaultShown = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  label: string;
+  defaultShown?: boolean;
+}) {
+  const [shown, setShown] = useState(defaultShown);
+  const [copied, setCopied] = useState<'ok' | 'failed' | null>(null);
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(value.trim());
+    setCopied(ok ? 'ok' : 'failed');
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        type={shown ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        aria-label={label}
+        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono pr-16"
+      />
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        <button
+          type="button"
+          onClick={() => setShown(!shown)}
+          title={shown ? `Hide ${label}` : `Show ${label}`}
+          aria-label={shown ? `Hide ${label}` : `Show ${label}`}
+          className="p-1 text-slate-400 hover:text-white rounded"
+        >
+          {shown ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={!value.trim()}
+          title={copied === 'ok' ? 'Copied' : copied === 'failed' ? 'Copy failed' : `Copy ${label}`}
+          aria-label={`Copy ${label}`}
+          className="p-1 text-slate-400 hover:text-white rounded disabled:opacity-40 disabled:hover:text-slate-400"
+        >
+          {copied === 'ok' ? (
+            <Check className="w-4 h-4 text-emerald-400" />
+          ) : copied === 'failed' ? (
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsModal() {
   const { isSettingsOpen } = useSettingsStore();
@@ -48,8 +141,6 @@ function SettingsDialog() {
   const [localDelay, setLocalDelay] = useState(rateLimitDelayMs);
   const [localConcurrency, setLocalConcurrency] = useState(maxConcurrency);
 
-  const [showSearchKey, setShowSearchKey] = useState(false);
-  const [showCartKey, setShowCartKey] = useState(false);
   const [testingKey, setTestingKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -58,7 +149,6 @@ function SettingsDialog() {
   const [dkClientId, setDkClientId] = useState(digikeyClientId);
   const [dkClientSecret, setDkClientSecret] = useState(digikeyClientSecret);
   const [dkSite, setDkSite] = useState(digikeyLocaleSite || 'US');
-  const [showDkSecret, setShowDkSecret] = useState(false);
   const [testingDigiKey, setTestingDigiKey] = useState(false);
   const [dkTestResult, setDkTestResult] = useState<{ valid: boolean; message: string } | null>(null);
 
@@ -229,27 +319,15 @@ function SettingsDialog() {
                 Get API Key <ExternalLink className="w-3 h-3" />
               </a>
             </div>
-            <div className="relative">
-              <input
-                type={showSearchKey ? 'text' : 'password'}
-                value={localSearchKey}
-                onChange={(e) => {
-                  setLocalSearchKey(e.target.value);
-                  setTestResult(null);
-                }}
-                placeholder="e.g. 12345678-abcd-1234-abcd-1234567890ab"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 pr-20 font-mono"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setShowSearchKey(!showSearchKey)}
-                  className="p-1 text-slate-400 hover:text-white rounded"
-                >
-                  {showSearchKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+            <KeyInput
+              label="Mouser Search API Key"
+              value={localSearchKey}
+              onChange={(v) => {
+                setLocalSearchKey(v);
+                setTestResult(null);
+              }}
+              placeholder="e.g. 12345678-abcd-1234-abcd-1234567890ab"
+            />
 
             {/* Key format guidance and validation */}
             <div className="space-y-1">
@@ -315,22 +393,12 @@ function SettingsDialog() {
               </label>
               <span className="text-[11px] text-slate-400">Defaults to Search Key if omitted</span>
             </div>
-            <div className="relative">
-              <input
-                type={showCartKey ? 'text' : 'password'}
-                value={localCartKey}
-                onChange={(e) => setLocalCartKey(e.target.value)}
-                placeholder="Optional separate Cart API Key"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 pr-10 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCartKey(!showCartKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white rounded"
-              >
-                {showCartKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+            <KeyInput
+              label="Mouser Cart API Key"
+              value={localCartKey}
+              onChange={setLocalCartKey}
+              placeholder="Optional separate Cart API Key"
+            />
           </div>
 
           {/* DigiKey API credentials */}
@@ -350,40 +418,28 @@ function SettingsDialog() {
             </div>
             <p className="text-[11px] text-slate-400">
               Create a production app on developer.digikey.com with the <strong>Product Information V4</strong> API and
-              paste its Client ID and Client Secret. They stay in this browser and are only sent to this app&apos;s own
-              server. A server can instead set <code>DIGIKEY_CLIENT_ID</code> and <code>DIGIKEY_CLIENT_SECRET</code>.
+              paste its Client ID and Client Secret. They are saved only in this browser and are sent with each search,
+              never stored on the server.
             </p>
-            <input
-              type="text"
+            <KeyInput
+              label="DigiKey Client ID"
+              defaultShown
               value={dkClientId}
-              onChange={(e) => {
-                setDkClientId(e.target.value);
+              onChange={(v) => {
+                setDkClientId(v);
                 setDkTestResult(null);
               }}
               placeholder="DigiKey Client ID"
-              autoComplete="off"
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
             />
-            <div className="relative">
-              <input
-                type={showDkSecret ? 'text' : 'password'}
-                value={dkClientSecret}
-                onChange={(e) => {
-                  setDkClientSecret(e.target.value);
-                  setDkTestResult(null);
-                }}
-                placeholder="DigiKey Client Secret"
-                autoComplete="off"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 pr-10 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowDkSecret(!showDkSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white rounded"
-              >
-                {showDkSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+            <KeyInput
+              label="DigiKey Client Secret"
+              value={dkClientSecret}
+              onChange={(v) => {
+                setDkClientSecret(v);
+                setDkTestResult(null);
+              }}
+              placeholder="DigiKey Client Secret"
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs text-slate-400">Locale site (country code)</label>
